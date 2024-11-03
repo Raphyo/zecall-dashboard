@@ -1,7 +1,15 @@
-import type { NextConfig } from 'next';
-
-const nextConfig: NextConfig = {
-  /* config options here */
+/** @type {import('next').NextConfig} */
+ 
+const nextConfig = {
+  experimental: {
+    ppr: 'incremental',
+    turbo: {
+      rules: {
+        // Use glob patterns instead of extensions
+        // Example: "*.mdx": ["mdx-loader"]
+      }
+    }
+  },
 };
-
-export default nextConfig;
+ 
+module.exports = nextConfig;
