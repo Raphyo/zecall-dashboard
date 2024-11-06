@@ -29,7 +29,6 @@ export default async function Page({
       </div>
       <div className="mt-4 flex items-center justify-between gap-2 md:mt-8">
         <Search placeholder="Search calls..." />
-        <Search placeholder="Search calls..." />
       </div>
       <Suspense fallback={<CallsTableSkeleton />}>
         <Table calls={calls} />
