@@ -18,6 +18,24 @@ async function getUser(email: string): Promise<User | undefined> {
  
 export const { auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  callbacks: {
+    async jwt({ token, user }) {
+      // When user signs in, add their id to the token
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      // Add the user id to the session
+      if (session.user) {
+        session.user.id = token.id as string;
+        session.user.email = token.email as string;
+      }
+      return session;
+    }
+  },
   providers: [
     Credentials({
       async authorize(credentials) {
@@ -30,8 +48,14 @@ export const { auth, signIn, signOut } = NextAuth({
           const user = await getUser(email);
           if (!user) return null;
           const passwordsMatch = await bcrypt.compare(password, user.password);
-          if (passwordsMatch) return user;
-
+          if (passwordsMatch) {
+            // Return only the necessary user data
+            return {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+            };
+          }
         }
         console.log('Invalid credentials');
         return null;

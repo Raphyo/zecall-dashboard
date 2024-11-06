@@ -12,27 +12,6 @@ export default function Page() {
         <div className="flex items-center justify-center p-6 md:w-3/5 md:px-28 md:py-12">
           <div className="relative w-full max-w-xl">
 
-      {/* Add Hero Images Here
-      <Image
-        src="/image-desktop.png"
-        width={1000}
-        height={760}
-        className="hidden md:block"
-        alt="Screenshots of the dashboard project showing desktop version"
-        style={{
-          position: 'absolute',
-          top: '10%',
-          left: '100%',
-          transform: 'translate(-50%, 50%)'
-        }}
-      />
-      <Image
-        src="/hero-mobile.png"
-        width={560}
-        height={620}
-        className="block md:hidden"
-        alt="Screenshot of the dashboard project showing mobile version"
-      /> */}
     </div>        
       </div>
       </div>
