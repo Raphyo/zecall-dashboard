@@ -7,6 +7,7 @@ import { register } from '@/app/lib/actions';
 import { Button } from '@/app/ui/button';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import Link from 'next/link';
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -51,7 +52,12 @@ export default function SignUpForm() {
               required
             />
           </div>
-
+          <div className="mt-4 text-center text-sm">
+              Already have an account?{' '}
+              <Link href="/login" className="text-blue-500 hover:text-blue-600">
+                Log in
+              </Link>
+          </div>
           {/* Email field */}
           <div>
             <label

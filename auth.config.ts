@@ -1,7 +1,7 @@
 import type { NextAuthConfig } from 'next-auth';
 
 export const authConfig = {
-  debug: false, // Disable debug mode
+  debug: false,
   providers: [],
   trustHost: true,
   pages: {
@@ -11,6 +11,16 @@ export const authConfig = {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
       const isOnDashboard = nextUrl.pathname.startsWith('/dashboard');
+      
+      // Redirect root path to signup
+      if (nextUrl.pathname === '/') {
+        return Response.redirect(new URL('/signup', nextUrl));
+      }
+      
+      // Allow access to signup page
+      if (nextUrl.pathname === '/signup') {
+        return true;
+      }
       
       if (isOnDashboard) {
         if (isLoggedIn) return true;
