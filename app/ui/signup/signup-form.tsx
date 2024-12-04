@@ -12,7 +12,7 @@ import Link from 'next/link';
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <Button className="w-full" aria-disabled={pending}>
+    <Button className="w-full mt-4" aria-disabled={pending}>
       Sign up <span className="ml-2">→</span>
     </Button>
   );

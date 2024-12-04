@@ -5,6 +5,40 @@ import { IncomingCallsTable } from '@/app/lib/definitions';
 import { PlayCircleIcon, PauseCircleIcon } from '@heroicons/react/24/outline';
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import { Transcript } from './transcript';
+
+
+function formatTranscript(transcript: string | null) {
+  if (!transcript) return null;
+  
+  // Split the transcript into lines
+  const lines = transcript.split('\n');
+  
+  return (
+    <div className="space-y-2">
+      {lines.map((line, index) => {
+        const isUser = line.toLowerCase().startsWith('user:');
+        const isAssistant = line.toLowerCase().startsWith('assistant:');
+        
+        return (
+          <div 
+            key={index}
+            className={`p-2 rounded-lg ${
+              isUser 
+                ? 'bg-sky-50 text-sky-900' 
+                : isAssistant 
+                  ? 'bg-amber-50 text-amber-900'
+                  : 'bg-gray-50 text-gray-900'
+            }`}
+          >
+            {line}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 
 const PlayPauseButton = ({ isPlaying, onClick }: { isPlaying: boolean; onClick: () => void }) => {
   return (
@@ -27,6 +61,12 @@ const AudioPlayer = dynamic(
 );
 
 export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
+
+    console.log('Calls with transcripts:', calls.map(call => ({
+    id: call.id,
+    hasTranscript: !!call.ai_transcript,
+    transcript: call.ai_transcript
+  })));
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -135,6 +175,18 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
                       onClick={() => handlePlayAudio(call.recording_url, call.id, call.caller_name)}
                     />
                   </div>
+                  {call.ai_transcript && (
+                    <div className="mt-4 pt-4 border-t">
+                      <details className="text-sm">
+                        <summary className="text-blue-600 cursor-pointer hover:text-blue-800">
+                          View Transcript
+                        </summary>
+                        <div className="mt-2 p-2 bg-gray-50 rounded-lg">
+                          {call.ai_transcript}
+                        </div>
+                      </details>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -150,6 +202,7 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
                   <th scope="col" className="px-3 py-5 font-medium">Hour</th>
                   <th scope="col" className="px-3 py-5 font-medium">Duration</th>
                   <th scope="col" className="px-3 py-5 font-medium">Recording</th>
+                  <th scope="col" className="px-3 py-5 font-medium">Transcript</th>
                 </tr>
               </thead>
               <tbody className="bg-white">
@@ -179,6 +232,22 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
                         onClick={() => handlePlayAudio(call.recording_url, call.id, call.caller_name)}
                       />
                     </td>
+                    <td className="px-3 py-3">
+                      {call.ai_transcript ? (
+                        <div className="max-w-md">
+                          <details className="text-sm">
+                            <summary className="text-blue-600 cursor-pointer hover:text-blue-800 font-medium">
+                              View Transcript
+                            </summary>
+                            <div className="mt-2 p-3 bg-gray-50 rounded-lg whitespace-pre-wrap border border-gray-200">
+                              {formatTranscript(call.ai_transcript)}
+                            </div>
+                          </details>
+                        </div>
+                    ) : (
+                      <span className="text-gray-400">No transcript</span>
+                    )}
+                  </td>
                   </tr>
                 ))}
               </tbody>

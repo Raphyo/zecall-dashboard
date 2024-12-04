@@ -13,6 +13,7 @@ interface PageProps {
 export default async function Page({
   searchParams = Promise.resolve({})
 }: PageProps) {
+  console.log('Dashboard Page Rendering'); // Add this line
   await auth();
   
   const resolvedParams = await searchParams;
@@ -28,7 +29,6 @@ export default async function Page({
         <h1 className="text-2xl">Incoming Calls</h1>
       </div>
       <div className="mt-4 flex items-center justify-between gap-2 md:mt-8">
-        <Search placeholder="Search calls..." />
         <Search placeholder="Search calls..." />
       </div>
       <Suspense fallback={<CallsTableSkeleton />}>

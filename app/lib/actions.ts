@@ -5,7 +5,6 @@ import { AuthError } from 'next-auth';
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
 import bcrypt from 'bcrypt';
-import { v5 as uuidv5 } from 'uuid';
 
 
 // Type for the registration state
@@ -80,9 +79,6 @@ export async function register(
 
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Generate UUID based on phone number
-    const phoneNumberCleaned = phoneNumber.replace(/[^0-9]/g, '');
 
     // Insert the new user
     await sql`

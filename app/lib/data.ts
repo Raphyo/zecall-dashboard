@@ -13,14 +13,8 @@ export async function fetchFilteredIncomingCalls(
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
   try {
-    // Use a try-catch block specifically for auth
-    let session;
-    try {
-      session = await auth();
-    } catch (authError) {
-      console.error('Auth Error:', authError);
-      return [];
-    }
+      // Ensure we await the auth call
+    const session = await auth();
     
     if (!session?.user?.email) {
       console.log('No valid session found');
@@ -48,7 +42,8 @@ export async function fetchFilteredIncomingCalls(
         date,
         duration,
         hour,
-        recording_url
+        recording_url,
+        ai_transcript
       FROM incoming_calls
       WHERE
         user_id = ${userId}
@@ -60,7 +55,6 @@ export async function fetchFilteredIncomingCalls(
       ORDER BY date DESC, hour DESC
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
     `;
-
     return calls.rows;
   } catch (error) {
     console.error('Database Error:', error);

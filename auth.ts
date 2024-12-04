@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { sql } from '@vercel/postgres';
 import type { User } from '@/app/lib/definitions';
 import bcrypt from 'bcrypt';
+import { cookies, headers } from 'next/headers';
  
 async function getUser(email: string): Promise<User | undefined> {
   try {
@@ -34,8 +35,15 @@ export const { auth, signIn, signOut } = NextAuth({
         session.user.email = token.email as string;
       }
       return session;
+    },
+    async authorized({ auth, request: { nextUrl } }) {
+      const headersList = await headers();
+      const cookieStore = await cookies();
+      // Rest of the authorized callback remains the same
+      return true;
     }
   },
+  
   providers: [
     Credentials({
       async authorize(credentials) {
