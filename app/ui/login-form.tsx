@@ -1,9 +1,10 @@
 'use client';
 
 import { useFormStatus } from 'react-dom';
-import {useActionState} from 'react'
+import { useActionState } from 'react';
 import { authenticate } from '@/app/lib/actions';
 import { useRouter } from 'next/navigation';
+import { Spinner } from './spinner';
 
 export default function LoginForm() {
   const router = useRouter();
@@ -13,9 +14,7 @@ export default function LoginForm() {
   return (
     <form action={dispatch} className="space-y-3">
       <div className="flex-1 rounded-lg bg-gray-50 px-6 pb-4 pt-8">
-        <h1 className={`mb-3 text-2xl`}>
-          Please log in to continue.
-        </h1>
+        <h1 className="mb-3 text-2xl">Please log in to continue.</h1>
         <div className="w-full">
           <div>
             <label
@@ -57,15 +56,19 @@ export default function LoginForm() {
           </div>
         </div>
         <button
-          className="mt-4 w-full rounded-lg bg-blue-500 px-4 py-2 text-white hover:bg-blue-400 disabled:bg-blue-300"
+          className="mt-4 w-full flex items-center justify-center rounded-lg bg-blue-500 px-4 py-2 text-white hover:bg-blue-400 disabled:bg-blue-300"
           disabled={pending}
         >
-          {pending ? 'Signing in...' : 'Sign in'}
+          {pending ? (
+            <>
+              <Spinner className="mr-2" /> Signing in...
+            </>
+          ) : (
+            'Sign in'
+          )}
         </button>
         {errorMessage && (
-          <div className="mt-4 text-sm text-red-500">
-            {errorMessage}
-          </div>
+          <div className="mt-4 text-sm text-red-500">{errorMessage}</div>
         )}
       </div>
     </form>

@@ -13,6 +13,7 @@ interface PageProps {
 export default async function Page({
   searchParams = Promise.resolve({})
 }: PageProps) {
+  console.log('Dashboard Page Rendering'); // Add this line
   await auth();
   
   const resolvedParams = await searchParams;

@@ -28,7 +28,9 @@ export async function GET(request: Request) {
       date DATE NOT NULL,
       duration INTEGER NOT NULL,
       hour TIME NOT NULL,
-      recording_url TEXT NOT NULL
+      recording_url TEXT NOT NULL,
+      ai_transcript TEXT,
+      ai_summary TEXT
     );
     `;
 

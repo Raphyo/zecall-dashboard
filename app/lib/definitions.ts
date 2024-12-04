@@ -1,17 +1,5 @@
 import { DefaultSession } from "next-auth";
 
-export type IncomingCall = {
-  id: string;
-  caller_number: string;
-  caller_name: string;
-  call_category: 'New booking' | 'Booking modification' | 'Booking cancellation' | 'Information';
-  date: string;
-  duration: number; // in seconds
-  hour: string;
-  recording_url: string;
-  isPlaying?: boolean; // Add this field to track audio playback state
-};
-
 export type IncomingCallsTable = {
   id: string;
   caller_number: string;
@@ -21,6 +9,7 @@ export type IncomingCallsTable = {
   duration: number;
   hour: string;
   recording_url: string;
+  ai_transcript: string
   isPlaying?: boolean;
 };
 
