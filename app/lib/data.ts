@@ -37,13 +37,15 @@ export async function fetchFilteredIncomingCalls(
       SELECT
         id,
         caller_number,
+        callee_number,
         caller_name,
         call_category,
         date,
         duration,
         hour,
         recording_url,
-        ai_transcript
+        ai_transcript,
+        call_status
       FROM incoming_calls
       WHERE
         user_id = ${userId}

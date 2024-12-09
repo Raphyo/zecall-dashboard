@@ -62,11 +62,6 @@ const AudioPlayer = dynamic(
 
 export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
 
-    console.log('Calls with transcripts:', calls.map(call => ({
-    id: call.id,
-    hasTranscript: !!call.ai_transcript,
-    transcript: call.ai_transcript
-  })));
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -153,6 +148,8 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
                         <p className="font-semibold">{call.caller_name}</p>
                       </div>
                       <p className="text-sm text-gray-500">{call.caller_number}</p>
+                      <p className="text-sm text-gray-500">{call.callee_number}</p>
+                      <p className="text-sm text-gray-500">{call.call_status}</p>
                     </div>
                     <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs ${
                       call.call_category === 'New booking' ? 'bg-green-100 text-green-700' :
@@ -196,7 +193,9 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
               <thead className="rounded-lg text-left text-sm font-normal">
                 <tr>
                   <th scope="col" className="px-4 py-5 font-medium">Caller Name</th>
-                  <th scope="col" className="px-3 py-5 font-medium">Phone Number</th>
+                  <th scope="col" className="px-3 py-5 font-medium">Caller Number</th>
+                  <th scope="col" className="px-3 py-5 font-medium">Callee Number</th>
+                  <th scope="col" className="px-3 py-5 font-medium">Status</th>
                   <th scope="col" className="px-3 py-5 font-medium">Category</th>
                   <th scope="col" className="px-3 py-5 font-medium">Date</th>
                   <th scope="col" className="px-3 py-5 font-medium">Hour</th>
@@ -210,6 +209,8 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
                   <tr key={call.id} className="w-full border-b py-3 text-sm last-of-type:border-none">
                     <td className="whitespace-nowrap px-3 py-3">{call.caller_name}</td>
                     <td className="whitespace-nowrap px-3 py-3">{call.caller_number}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{call.callee_number}</td>
+                    <td className="whitespace-nowrap px-3 py-3">{call.call_status}</td>
                     <td className="whitespace-nowrap px-3 py-3">
                       <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs ${
                         call.call_category === 'New booking' ? 'bg-green-100 text-green-700' :

@@ -30,7 +30,9 @@ export async function GET(request: Request) {
       hour TIME NOT NULL,
       recording_url TEXT NOT NULL,
       ai_transcript TEXT,
-      ai_summary TEXT
+      ai_summary TEXT,
+      callee_number VARCHAR(20),
+      call_status VARCHAR(20)
     );
     `;
 
