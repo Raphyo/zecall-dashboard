@@ -145,6 +145,7 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
                   <div className="flex items-center justify-between border-b pb-4">
                     <div>
                       <div className="mb-2 flex items-center">
+                        <p className="text-sm text-gray-500">{call.id}</p>
                         <p className="font-semibold">{call.caller_name}</p>
                       </div>
                       <p className="text-sm text-gray-500">{call.caller_number}</p>
@@ -192,6 +193,7 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
             <table className="hidden min-w-full text-gray-900 md:table">
               <thead className="rounded-lg text-left text-sm font-normal">
                 <tr>
+                <th scope="col" className="px-4 py-5 font-medium">ID</th>
                   <th scope="col" className="px-4 py-5 font-medium">Caller Name</th>
                   <th scope="col" className="px-3 py-5 font-medium">Caller Number</th>
                   <th scope="col" className="px-3 py-5 font-medium">Callee Number</th>
@@ -207,6 +209,7 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
               <tbody className="bg-white">
                 {calls?.map((call) => (
                   <tr key={call.id} className="w-full border-b py-3 text-sm last-of-type:border-none">
+                    <td className="whitespace-nowrap px-3 py-3">{call.id}</td>
                     <td className="whitespace-nowrap px-3 py-3">{call.caller_name}</td>
                     <td className="whitespace-nowrap px-3 py-3">{call.caller_number}</td>
                     <td className="whitespace-nowrap px-3 py-3">{call.callee_number}</td>
