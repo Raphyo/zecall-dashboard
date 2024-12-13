@@ -2,6 +2,7 @@
 
 import { PlayCircleIcon, PauseCircleIcon } from '@heroicons/react/24/outline';
 import { formatDuration } from '@/app/lib/utils';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 interface AudioPlayerProps {
   audioRef: HTMLAudioElement | null;
@@ -13,6 +14,7 @@ interface AudioPlayerProps {
   };
   playingId: string | null;
   handlePlayAudio: (url: string, id: string, name: string) => void;
+  onClose: () => void; 
 }
 
 const PlayPauseButton = ({ isPlaying, onClick }: { isPlaying: boolean; onClick: () => void }) => {
@@ -30,10 +32,16 @@ const PlayPauseButton = ({ isPlaying, onClick }: { isPlaying: boolean; onClick: 
   );
 };
 
-export function AudioPlayer({ audioRef, currentTime, currentAudioInfo, playingId, handlePlayAudio }: AudioPlayerProps) {
+export function AudioPlayer({ audioRef, currentTime, currentAudioInfo, playingId, handlePlayAudio, onClose }: AudioPlayerProps) {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4">
-      <div className="max-w-7xl mx-auto flex items-center gap-4">
+      <div className="max-w-4xl mx-auto relative">
+        <button 
+          onClick={onClose}
+          className="absolute -top-2 right-0 p-1 rounded-full hover:bg-gray-100"
+        >
+          <XMarkIcon className="w-5 h-5" />
+        </button>
         <PlayPauseButton 
           isPlaying={!!(audioRef && !audioRef.paused)}
           onClick={() => audioRef && handlePlayAudio(currentAudioInfo.url, playingId!, currentAudioInfo.name)}

@@ -1,7 +1,8 @@
 
 export const formatDuration = (seconds: number): string => {
-  if (!seconds || isNaN(seconds)) return '0:00';
-  
+  if (!seconds || isNaN(seconds) || !isFinite(seconds)) {
+    return '0:00';
+  }  
   // Convert to integer to handle any decimal values
   const totalSeconds = Math.floor(seconds);
   

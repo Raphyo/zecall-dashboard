@@ -4,6 +4,7 @@ import { fetchFilteredIncomingCalls } from '@/app/lib/data';
 import { CallsTableSkeleton } from '@/app/ui/skeletons';
 import Search from '@/app/ui/search';
 import { auth } from '@/auth';
+import Pagination from '@/app/ui/incoming-calls/pagination';
 
 interface PageProps {
   params?: Promise<any>;
@@ -21,7 +22,7 @@ export default async function Page({
   const currentPage = Number(resolvedParams?.page) || 1;
   
   // Fetch data on the server
-  const calls = await fetchFilteredIncomingCalls(query, currentPage);
+  const { calls, totalPages } = await fetchFilteredIncomingCalls(query, currentPage);
 
   return (
     <div className="w-full">
@@ -34,6 +35,9 @@ export default async function Page({
       <Suspense fallback={<CallsTableSkeleton />}>
         <Table calls={calls} />
       </Suspense>
+      {/* Add mb-24 class to create space when audio player is present */}
+      <div className="mb-24">
+        <Pagination totalPages={totalPages} />
+      </div>
     </div>
   );
-}

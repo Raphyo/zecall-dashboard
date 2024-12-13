@@ -18,7 +18,7 @@ export async function fetchFilteredIncomingCalls(
     
     if (!session?.user?.email) {
       console.log('No valid session found');
-      return [];
+      return { calls: [], totalPages: 0 };
     }
 
     // Get user details from database using email
@@ -28,10 +28,19 @@ export async function fetchFilteredIncomingCalls(
 
     if (!userResult.rows.length) {
       console.log('No user found');
-      return [];
+      return { calls: [], totalPages: 0 };
     }
 
     const userId = userResult.rows[0].id;
+
+    // Get total count for pagination
+    const countResult = await sql`
+      SELECT COUNT(*) 
+      FROM incoming_calls 
+      WHERE user_id = ${userId}
+    `;
+
+    const totalPages = Math.ceil(Number(countResult.rows[0].count) / ITEMS_PER_PAGE);
 
     const calls = await sql<IncomingCallsTable>`
       SELECT
@@ -57,9 +66,9 @@ export async function fetchFilteredIncomingCalls(
       ORDER BY date DESC, hour DESC
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
     `;
-    return calls.rows;
+    return { calls: calls.rows, totalPages };
   } catch (error) {
     console.error('Database Error:', error);
-    return [];
+    return { calls: [], totalPages: 0 };
   }
 }

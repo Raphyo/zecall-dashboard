@@ -260,6 +260,8 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
         </div>
       </div>
 
+
+
     {/* Audio Player */}
     {currentAudioInfo && (
       <AudioPlayer
@@ -268,6 +270,14 @@ export default function Table({ calls }: { calls: IncomingCallsTable[] }) {
         currentAudioInfo={currentAudioInfo}
         playingId={playingId}
         handlePlayAudio={handlePlayAudio}
+        onClose={() => {
+          setPlayingId(null);
+          setCurrentAudioInfo(null); // Add this line
+          if (audioRef) {
+            audioRef.pause();
+            audioRef.currentTime = 0;
+          }
+        }}
       />
     )}
     </>
