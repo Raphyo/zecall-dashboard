@@ -1,11 +1,9 @@
 import { fetchCampaignDetails } from '@/app/lib/data';
-import { auth } from '@/auth';
-import { Button } from '@/app/ui/button';
-import { startCampaign } from '@/app/lib/actions';
-import clsx from 'clsx';
-import { formatDateToLocal } from '@/app/lib/utils';
 import { Campaign } from '@/app/lib/definitions';
+import { formatDateToLocal } from '@/app/lib/utils';
 import { StartCampaignButton } from '@/app/ui/campaigns/start-campaign-button';
+import { auth } from '@/auth';
+import clsx from 'clsx';
 
 export default async function CampaignPage({
   params,
