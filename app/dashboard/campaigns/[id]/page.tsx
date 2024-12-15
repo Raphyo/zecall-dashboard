@@ -8,11 +8,12 @@ import clsx from 'clsx';
 export default async function CampaignPage({
   params,
 }: {
-    params: { id: string } | Promise<{ id: string }>;
+  params: { id: string };
 }) {
   await auth();
-  const resolvedParams = 'then' in params ? await params : params;
+  const resolvedParams = await (params as any);
   const campaign = await fetchCampaignDetails(resolvedParams.id) as Campaign;
+
   if (!campaign) {
     return <div>Campaign not found</div>;
   }
