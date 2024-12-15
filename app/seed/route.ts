@@ -36,6 +36,27 @@ export async function GET(request: Request) {
     );
     `;
 
+    await client.sql`
+    CREATE TABLE IF NOT EXISTS campaigns (
+      id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      user_id UUID NOT NULL REFERENCES users(id),
+      name VARCHAR(255) NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'created',
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      started_at TIMESTAMP WITH TIME ZONE
+    );
+
+    CREATE TABLE IF NOT EXISTS campaign_contacts (
+      id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+      campaign_id UUID NOT NULL REFERENCES campaigns(id),
+      name VARCHAR(255) NOT NULL,
+      phone_number VARCHAR(20) NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      called_at TIMESTAMP WITH TIME ZONE
+    );
+    `;
+
     return NextResponse.json({ message: 'Database seeded successfully' }, { status: 200 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

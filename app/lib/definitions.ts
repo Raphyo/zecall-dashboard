@@ -24,6 +24,27 @@ export type User = {
   created_at: Date;
 };
 
+export type Campaign = {
+  id: string;
+  user_id: string;
+  name: string;
+  status: 'created' | 'in_progress' | 'completed' | 'failed';
+  created_at: string;
+  started_at?: string;
+  contacts: Contact[];
+  error_message?: string;
+};
+
+export type Contact = {
+  id: string;
+  campaign_id: string;
+  name: string;
+  phone_number: string;
+  status: 'pending' | 'completed' | 'failed';
+  created_at: string;
+  called_at?: string;
+};
+
 declare module 'next-auth' {
   interface Session {
     user: {
