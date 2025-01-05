@@ -7,19 +7,20 @@ import { auth } from '@/auth';
 import Pagination from '@/app/ui/incoming-calls/pagination';
 
 interface PageProps {
-  params?: Promise<any>;
-  searchParams?: Promise<any>;
+  params?: Promise<{ [key: string]: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
 export default async function Page({
+  params = Promise.resolve({}),
   searchParams = Promise.resolve({})
 }: PageProps) {
-  console.log('Dashboard Page Rendering'); // Add this line
+  console.log('Dashboard Page Rendering');
   await auth();
   
-  const resolvedParams = await searchParams;
-  const query = (resolvedParams?.query as string) || '';
-  const currentPage = Number(resolvedParams?.page) || 1;
+  const resolvedSearchParams = await searchParams;
+  const query = (resolvedSearchParams?.query as string) || '';
+  const currentPage = Number(resolvedSearchParams?.page) || 1;
   
   // Fetch data on the server
   const { calls, totalPages } = await fetchFilteredIncomingCalls(query, currentPage);

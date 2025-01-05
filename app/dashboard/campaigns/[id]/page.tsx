@@ -5,13 +5,18 @@ import { StartCampaignButton } from '@/app/ui/campaigns/start-campaign-button';
 import { auth } from '@/auth';
 import clsx from 'clsx';
 
+type PageProps = {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
+};
+
 export default async function CampaignPage({
   params,
-}: {
-  params: { id: string };
-}) {
+  searchParams = Promise.resolve({}),
+}: PageProps) {
   await auth();
-  const resolvedParams = await (params as any);
+  const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
   const campaign = await fetchCampaignDetails(resolvedParams.id) as Campaign;
 
   if (!campaign) {
