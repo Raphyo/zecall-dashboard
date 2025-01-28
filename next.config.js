@@ -1,14 +1,15 @@
 /** @type {import('next').NextConfig} */
- 
 const nextConfig = {
-  experimental: {
-    // ppr: 'incremental'
-  }
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'zecall-dashboard.vercel.app',
+        port: '',
+        pathname: '/**',
+      },
+    ],
+  },
 };
- 
+
 module.exports = nextConfig;
-module.exports = {
-  optimizeResources: {
-    preload: false // This will disable automatic preloading
-  }
-}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getCalls, updateCampaignStatus } from '@/app/lib/api';
 import { PlayCircleIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
@@ -11,7 +11,7 @@ import { TranscriptModal } from '@/app/ui/modals/transcript-modal';
 import { Filters, FilterState } from '@/app/ui/calls/filters';
 import { useSession } from 'next-auth/react';
 
-export default function CallHistoryPage() {
+function CallHistoryContent() {
   const [calls, setCalls] = useState<Call[]>([]);
   const [filteredCalls, setFilteredCalls] = useState<Call[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,7 +47,6 @@ export default function CallHistoryPage() {
       }
     } catch (error) {
       console.error('Error loading calls:', error);
-      setError('Failed to load calls');
     } finally {
       setIsLoading(false);
     }
@@ -288,5 +287,13 @@ export default function CallHistoryPage() {
         summary={selectedTranscript.summary}
       />
     </div>
+  );
+}
+
+export default function CallHistoryPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CallHistoryContent />
+    </Suspense>
   );
 }

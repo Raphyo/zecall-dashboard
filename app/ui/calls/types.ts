@@ -16,5 +16,6 @@ export interface Call {
   campaign_id: string;
   campaign_name?: string;
   direction: string;
+  transcript: string;
 
 } 

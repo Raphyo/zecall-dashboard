@@ -43,16 +43,16 @@ export default function CampaignList() {
       return c;
     });
     localStorage.setItem('campaigns', JSON.stringify(updatedCampaigns));
-    setCampaigns(updatedCampaigns);
+    setCampaigns(updatedCampaigns as Campaign[]);
     setOpenMenuId(null);
   };
 
   const handleDuplicate = (campaign: Campaign) => {
-    const newCampaign = {
+    const newCampaign: Campaign = {
       ...campaign,
       id: crypto.randomUUID(),
       name: `${campaign.name} (copie)`,
-      status: 'brouillon',
+      status: 'brouillon' as const,
       created_at: new Date().toISOString()
     };
     const updatedCampaigns = [...campaigns, newCampaign];
