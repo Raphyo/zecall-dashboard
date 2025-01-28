@@ -1,100 +1,60 @@
-import { fetchCampaignDetails } from '@/app/lib/data';
+'use client';
+
+import { useState, useEffect } from 'react';
+import CallList, { Call } from '@/app/ui/calls/call-list';
 import { Campaign } from '@/app/lib/definitions';
-import { formatDateToLocal } from '@/app/lib/utils';
-import { StartCampaignButton } from '@/app/ui/campaigns/start-campaign-button';
-import { auth } from '@/auth';
-import clsx from 'clsx';
 
-type PageProps = {
-  params: Promise<{ id: string }>;
-  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
-};
+export default function CampaignDetailPage({ params }: { params: { id: string } }) {
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [calls, setCalls] = useState<Call[]>([]);
 
-export default async function CampaignPage({
-  params,
-  searchParams = Promise.resolve({}),
-}: PageProps) {
-  await auth();
-  const resolvedParams = await params;
-  const resolvedSearchParams = await searchParams;
-  const campaign = await fetchCampaignDetails(resolvedParams.id) as Campaign;
+  useEffect(() => {
+    // Load campaign data
+    const campaigns = JSON.parse(localStorage.getItem('campaigns') || '[]');
+    const currentCampaign = campaigns.find((c: Campaign) => c.id === params.id);
+    if (currentCampaign) {
+      setCampaign(currentCampaign);
+    }
+
+    // Mock calls data for this campaign
+    const mockCalls: Call[] = [
+      {
+        id: '1',
+        caller_number: '+33612345678',
+        callee_number: '+33123456789',
+        caller_name: 'Jean Dupont',
+        date: '2024-03-25T10:30:00',
+        duration: 180,
+        recording_url: '/test.mp3',
+        transcript: 'Bonjour, je souhaiterais prendre rendez-vous...',
+        sentiment: 'positive',
+        call_type: 'outbound',
+        agent_name: 'Agent Commercial',
+        campaign_id: params.id,
+        campaign_name: currentCampaign?.name,
+        summary: 'Le client souhaite prendre rendez-vous pour une consultation.'
+      },
+      // Add more mock calls for this campaign
+    ];
+    setCalls(mockCalls);
+  }, [params.id]);
 
   if (!campaign) {
-    return <div>Campaign not found</div>;
+    return <div>Chargement...</div>;
   }
 
   return (
     <div className="w-full">
-      <div className="flex w-full items-center justify-between">
-        <h1 className="text-2xl">{campaign.name}</h1>
-        <div className="flex items-center gap-4">
-          <span className={clsx(
-            'inline-flex items-center rounded-full px-3 py-1 text-sm',
-            {
-              'bg-green-100 text-green-700': campaign.status === 'completed',
-              'bg-yellow-100 text-yellow-700': campaign.status === 'in_progress',
-              'bg-red-100 text-red-700': campaign.status === 'failed',
-              'bg-gray-100 text-gray-700': campaign.status === 'created',
-            }
-          )}>
-            {campaign.status}
-          </span>
-          {campaign.status === 'created' && (
-            <StartCampaignButton campaignId={campaign.id} />
-          )}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold mb-2">{campaign.name}</h1>
+        <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+          <span>Créée le {new Date(campaign.created_at).toLocaleDateString()}</span>
+          <span className="hidden md:inline">•</span>
+          <span>{campaign.contacts_count} contacts</span>
         </div>
       </div>
 
-      <div className="mt-8">
-        <h2 className="text-lg font-medium">Contacts</h2>
-        <div className="mt-4 flow-root">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead>
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Phone Number
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Called At
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {campaign.contacts?.map((contact) => (
-                <tr key={contact.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {contact.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {contact.phone_number}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className={clsx(
-                      'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-                      {
-                        'bg-gray-100 text-gray-800': contact.status === 'pending',
-                        'bg-green-100 text-green-800': contact.status === 'completed',
-                        'bg-red-100 text-red-800': contact.status === 'failed'
-                      }
-                    )}>
-                      {contact.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {contact.called_at ? formatDateToLocal(contact.called_at) : '-'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <CallList calls={calls} campaignView={true} />
     </div>
   );
 }

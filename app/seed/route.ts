@@ -37,25 +37,49 @@ export async function GET(request: Request) {
     `;
 
     await client.sql`
-    CREATE TABLE IF NOT EXISTS campaigns (
-      id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-      user_id UUID NOT NULL REFERENCES users(id),
-      name VARCHAR(255) NOT NULL,
-      status VARCHAR(20) NOT NULL DEFAULT 'created',
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      started_at TIMESTAMP WITH TIME ZONE
-    );
-
-    CREATE TABLE IF NOT EXISTS campaign_contacts (
-      id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-      campaign_id UUID NOT NULL REFERENCES campaigns(id),
-      name VARCHAR(255) NOT NULL,
-      phone_number VARCHAR(20) NOT NULL,
-      status VARCHAR(20) NOT NULL DEFAULT 'pending',
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      called_at TIMESTAMP WITH TIME ZONE
+    CREATE TABLE IF NOT EXISTS ai_agents (
+        id UUID PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        voice VARCHAR(50) NOT NULL,
+        language VARCHAR(50) NOT NULL,
+        personality VARCHAR(50) NOT NULL,
+        speed FLOAT NOT NULL,
+        call_type VARCHAR(50) NOT NULL,
+        knowledge_base_path TEXT,
+        knowledge_base_type VARCHAR(50),
+        llm_prompt TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        user_id UUID REFERENCES users(id)
     );
     `;
+
+    await client.sql`
+    CREATE TABLE IF NOT EXISTS campaigns (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL,  -- 'brouillon', 'planifiée', 'en-cours', 'terminée'
+    phone_number_id UUID REFERENCES phone_numbers(id),
+    agent_id UUID REFERENCES ai_agents(id),
+    contacts_file_path TEXT,
+    contacts_count INTEGER,
+    scheduled_date TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    user_id UUID REFERENCES users(id)
+);
+`;
+
+    await client.sql`
+    CREATE TABLE IF NOT EXISTS phone_numbers (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        number VARCHAR(20) NOT NULL,
+        type VARCHAR(20) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        user_id UUID REFERENCES users(id),
+        agent_id UUID REFERENCES ai_agents(id),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    `;
+
 
     return NextResponse.json({ message: 'Database seeded successfully' }, { status: 200 });
   } catch (error: any) {

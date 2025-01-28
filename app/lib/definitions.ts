@@ -1,54 +1,42 @@
-import { DefaultSession } from "next-auth";
-
-export type IncomingCallsTable = {
-  id: string;
-  caller_number: string;
-  caller_name: string;
-  callee_number: string,
-  call_status: string;
-  call_category: 'New booking' | 'Booking modification' | 'Booking cancellation' | 'Information';
-  date: string;
-  duration: number;
-  hour: string;
-  recording_url: string;
-  ai_transcript: string;
-  isPlaying?: boolean;
-};
-
+// Add to existing definitions
 export type User = {
   id: string;
   name: string;
   email: string;
   password: string;
-  phone_number: string;
-  created_at: Date;
+  created_at: string;
 };
 
 export type Campaign = {
   id: string;
-  user_id: string;
   name: string;
-  status: 'created' | 'in_progress' | 'completed' | 'failed';
+  status: 'brouillon' | 'planifiée' | 'en-cours' | 'terminée';
+  knowledge_base: string;
+  knowledge_base_type: 'pdf' | 'text';
+  contacts_file: string;
+  contacts_count: number;
+  scheduled_date: string;
+  llm_prompt: string;
   created_at: string;
-  started_at?: string;
-  contacts: Contact[];
-  error_message?: string;
+  user_id: string;
 };
 
-export type Contact = {
-  id: string;
-  campaign_id: string;
-  name: string;
-  phone_number: string;
-  status: 'pending' | 'completed' | 'failed';
-  created_at: string;
-  called_at?: string;
-};
+import type { DefaultSession } from 'next-auth';
+import type { JWT as NextAuthJWT } from 'next-auth/jwt';
 
 declare module 'next-auth' {
   interface Session {
+    token?: string;
     user: {
       id: string;
     } & DefaultSession['user'];
+  }
+}
+
+declare module 'next-auth/jwt' {
+  interface JWT {
+    id: string;
+    jwt?: string;
+    email?: string | null;
   }
 }

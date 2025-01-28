@@ -1,12 +1,11 @@
 'use client';
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
-import { useActionState, useState } from 'react';
-import { useFormStatus } from 'react-dom';
+import { useState, useEffect } from 'react';
+import { useFormState, useFormStatus } from 'react-dom';
 import { register } from '@/app/lib/actions';
 import { Button } from '@/app/ui/button';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import Link from 'next/link';
 
 function SubmitButton() {
@@ -21,7 +20,7 @@ function SubmitButton() {
 export default function SignUpForm() {
   const router = useRouter();
   const initialState = { message: '', success: false };
-  const [state, formAction] = useActionState(register, initialState);
+  const [state, formAction] = useFormState(register, initialState);
   const [phoneNumber, setPhoneNumber] = useState<string>();
 
   useEffect(() => {
@@ -76,8 +75,8 @@ export default function SignUpForm() {
             />
           </div>
 
-                    {/* Phone Number field */}
-                    <div>
+          {/* Phone Number field */}
+          <div>
             <label
               className="mb-3 mt-5 block text-xs font-medium text-gray-900"
               htmlFor="phoneNumber"

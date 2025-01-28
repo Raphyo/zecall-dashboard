@@ -1,42 +1,281 @@
-export default async function Page() {
-  return (
-    <main className="min-h-[80vh] relative">
-      {/* AI-themed background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-purple-50 opacity-70" />
-      
-      {/* Decorative elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-4 -right-4 w-72 h-72 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob" />
-        <div className="absolute -bottom-8 -left-4 w-72 h-72 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000" />
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-pink-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000" />
-      </div>
+'use client';
 
+import { useEffect, useState } from 'react';
+import { getCalls, getCampaigns } from '@/app/lib/api';
+import { useSession } from 'next-auth/react';
+import { 
+  PhoneArrowUpRightIcon, 
+  PhoneArrowDownLeftIcon, 
+  ClockIcon, 
+  PhoneIcon,
+} from '@heroicons/react/24/outline';
+import { inter } from '@/app/ui/fonts';
+import { formatDistanceToNow } from 'date-fns';
+import { fr } from 'date-fns/locale/fr';
+
+function SkeletonCard() {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="h-4 w-24 bg-gray-200 rounded animate-pulse"></div>
+        <div className="h-8 w-8 bg-gray-200 rounded-lg animate-pulse"></div>
+      </div>
+      <div className="h-8 w-16 bg-gray-200 rounded animate-pulse"></div>
+    </div>
+  );
+}
+
+interface RecentCall {
+  id: string;
+  direction: string;
+  caller_number: string;
+  date: string;
+  duration: number;
+  call_category: string;
+}
+
+interface Campaign {
+  id: string;
+  name: string;
+  progress: number;
+  total_calls: number;
+  completed_calls: number;
+}
+
+export default function DashboardPage() {
+  const { data: session, status } = useSession();
+  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState({
+    inboundCalls: 0,
+    outboundCalls: 0,
+    avgDuration: 0,
+    avgCallsPerDay: 0
+  });
+  const [recentCalls, setRecentCalls] = useState<RecentCall[]>([]);
+  const [activeCampaigns, setActiveCampaigns] = useState<Campaign[]>([]);
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      window.location.href = '/login';
+    }
+  }, [status]);
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      if (status !== 'authenticated' || !session?.user?.email) return;
+      
+      try {
+        setIsLoading(true);
+        const calls = await getCalls(session.user.email);
+        
+        // Get recent calls (last 5)
+        const recent = calls
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .slice(0, 5);
+        setRecentCalls(recent);
+
+        // Count calls by direction
+        const inboundCalls = calls.filter(call => call.direction === 'entrant').length;
+        const outboundCalls = calls.filter(call => call.direction === 'sortant').length;
+        const unknownCalls = calls.filter(call => call.direction === 'inconnu').length;
+
+        // Calculate average duration (in seconds)
+        const totalDuration = calls.reduce((sum, call) => sum + (call.duration || 0), 0);
+        const avgDuration = calls.length > 0 ? Math.round(totalDuration / calls.length) : 0;
+
+        // Calculate average calls per day
+        const dates = [...new Set(calls.map(call => call.date.split('T')[0]))];
+        const avgCallsPerDay = dates.length > 0 ? Math.round(calls.length / dates.length) : 0;
+
+        // Get active campaigns
+        const campaigns = await getCampaigns(session.user.email);
+        const active = campaigns
+          .filter(c => c.status !== 'terminée')
+          .map(c => ({
+            id: c.id,
+            name: c.name,
+            total_calls: c.contacts_count,
+            completed_calls: calls.filter(call => call.campaign_id === c.id).length,
+            progress: Math.round((calls.filter(call => call.campaign_id === c.id).length / c.contacts_count) * 100)
+          }));
+        setActiveCampaigns(active);
+
+        setStats({
+          inboundCalls,
+          outboundCalls,
+          avgDuration,
+          avgCallsPerDay
+        });
+      } catch (error) {
+        console.error('Error loading dashboard data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, [session?.user?.email, status]);
+
+  // Show loading state
+  if (status === 'loading' || isLoading) {
+    return (
+      <main className="min-h-[80vh] relative bg-gray-50">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 via-white to-purple-50/50" />
+        <div className="relative px-4 py-8 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
+          {/* Welcome Section Skeleton */}
+          <div className="max-w-3xl mx-auto text-center mb-12">
+            <div className="h-12 w-2/3 bg-gray-200 rounded animate-pulse mx-auto mb-6"></div>
+            <div className="h-6 w-3/4 bg-gray-200 rounded animate-pulse mx-auto"></div>
+          </div>
+
+          {/* Stats Grid Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Show nothing if not authenticated
+  if (!session) {
+    return null;
+  }
+
+  const formatDuration = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <main className="min-h-[80vh] relative bg-gray-50">
+      {/* Subtle gradient background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 via-white to-purple-50/50" />
+      
       {/* Main content */}
-      <div className="relative flex flex-col items-center justify-center min-h-[80vh] px-4">
-        <div className="text-center space-y-6 max-w-3xl mx-auto">
-          <h1 className="text-5xl font-bold text-gray-900 tracking-tight leading-tight">
-            Welcome to <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Zecall.ai</span>
+      <div className="relative px-4 py-8 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
+        {/* Welcome Section */}
+        <div className="max-w-3xl mx-auto text-center mb-12">
+          <h1 className={`${inter.className} text-4xl sm:text-5xl font-semibold text-gray-900 tracking-tight leading-[1.15] mb-6`}>
+            Bienvenue sur{' '}
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 font-bold">
+              Zecall.ai
+            </span>
           </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">
-            Your intelligent phone assistant, powered by AI to handle calls with precision and professionalism
+          <p className="text-lg sm:text-xl text-gray-600 leading-relaxed max-w-2xl mx-auto">
+            Votre assistant téléphonique intelligent, propulsé par l'IA pour gérer les appels avec précision et professionnalisme
           </p>
-          
-          {/* Optional: Add an icon or illustration */}
-          <div className="mt-8">
-            <div className="inline-block p-4 rounded-full bg-blue-50 text-blue-600">
-              <svg 
-                className="w-12 h-12"
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={1.5} 
-                  d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"
-                />
-              </svg>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">Appels Entrants</h3>
+              <span className="p-2 bg-blue-50 rounded-lg">
+                <PhoneArrowDownLeftIcon className="w-5 h-5 text-blue-600" />
+              </span>
+            </div>
+            <p className="text-2xl font-semibold text-gray-900">{stats.inboundCalls}</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">Appels Sortants</h3>
+              <span className="p-2 bg-green-50 rounded-lg">
+                <PhoneArrowUpRightIcon className="w-5 h-5 text-green-600" />
+              </span>
+            </div>
+            <p className="text-2xl font-semibold text-gray-900">{stats.outboundCalls}</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">Durée Moyenne</h3>
+              <span className="p-2 bg-purple-50 rounded-lg">
+                <ClockIcon className="w-5 h-5 text-purple-600" />
+              </span>
+            </div>
+            <p className="text-2xl font-semibold text-gray-900">{formatDuration(stats.avgDuration)}</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">Appels par Jour</h3>
+              <span className="p-2 bg-indigo-50 rounded-lg">
+                <PhoneIcon className="w-5 h-5 text-indigo-600" />
+              </span>
+            </div>
+            <p className="text-2xl font-semibold text-gray-900">{stats.avgCallsPerDay}</p>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6 mt-12">
+          {/* Recent Activity */}
+          <div className="bg-white rounded-xl p-6 shadow-sm">
+            <h2 className="text-lg font-semibold mb-4">Activité Récente</h2>
+            <div className="space-y-4">
+              {recentCalls.map(call => (
+                <div key={call.id} className="flex items-center gap-4">
+                  <div className={`p-2 rounded-full ${
+                    call.direction === 'entrant' ? 'bg-blue-50' : 'bg-green-50'
+                  }`}>
+                    {call.direction === 'entrant' ? 
+                      <PhoneArrowDownLeftIcon className="w-5 h-5 text-blue-600" /> :
+                      <PhoneArrowUpRightIcon className="w-5 h-5 text-green-600" />
+                    }
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">{call.caller_number}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                        {call.call_category}
+                      </span>
+                      <p className="text-sm text-gray-500">
+                        {formatDistanceToNow(new Date(call.date), { 
+                          addSuffix: true,
+                          locale: fr 
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-sm text-gray-500">{formatDuration(call.duration)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Active Campaigns */}
+          <div className="bg-white rounded-xl p-6 shadow-sm">
+            <h2 className="text-lg font-semibold mb-4">Campagnes Actives</h2>
+            <div className="space-y-4">
+              {activeCampaigns.map(campaign => (
+                <div key={campaign.id} className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <p className="font-medium">{campaign.name}</p>
+                    <p className="text-sm font-medium">{campaign.progress}%</p>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-500" 
+                      style={{ width: `${campaign.progress}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    {campaign.completed_calls} / {campaign.total_calls} appels complétés
+                  </p>
+                </div>
+              ))}
+              {activeCampaigns.length === 0 && (
+                <p className="text-gray-500 text-center py-4">
+                  Aucune campagne active
+                </p>
+              )}
             </div>
           </div>
         </div>
