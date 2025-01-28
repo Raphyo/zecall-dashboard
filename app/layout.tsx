@@ -4,8 +4,8 @@ import { inter } from '@/app/ui/fonts';
 import { Providers } from './providers';
 
 export const metadata = {
-  title: 'ZECALL.AI',
-  description: 'Your app description',
+  title: 'zecall.ai',
+  description: 'Votre assistant virtuel pour les appels entrants et sortants',
 };
 
 export default async function RootLayout({
