@@ -2,7 +2,7 @@
  
 const nextConfig = {
   experimental: {
-    // ppr: 'incremental',
+    ppr: 'incremental',
     turbo: {
       rules: {
         // Use glob patterns instead of extensions

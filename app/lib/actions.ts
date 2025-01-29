@@ -4,8 +4,7 @@ import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
-import bcrypt from 'bcrypt';
-
+import bcrypt from 'bcryptjs';
 
 // Type for the registration state
 type RegisterState = {
@@ -13,25 +12,17 @@ type RegisterState = {
   success: boolean;
 };
 
-
 export async function authenticate(
   prevState: string | undefined,
   formData: FormData,
 ) {
   try {
-
-    // Create credentials object from form data
-    const credentials = {
+    await signIn('credentials', {
       email: formData.get('email') as string,
       password: formData.get('password') as string,
-    };
-
-    await signIn('credentials', {
-      ...credentials,
       redirect: true,
-      redirectTo: '/dashboard',
+      callbackUrl: '/dashboard',
     });
-
   } catch (error) {
     if (error instanceof AuthError) {
       switch (error.type) {
@@ -55,9 +46,6 @@ export async function register(
     const password = formData.get('password') as string;
     const phoneNumber = formData.get('phoneNumber') as string;
 
-    console.log('Input Values:', { name, email, password, phoneNumber });
-
-    // Validate input
     if (!name || !email || !password || !phoneNumber) {
       return {
         message: 'Missing required fields',
@@ -65,7 +53,6 @@ export async function register(
       };
     }
 
-    // Check if user already exists
     const existingUser = await sql`
       SELECT email FROM users WHERE email = ${email}
     `;
@@ -77,10 +64,8 @@ export async function register(
       };
     }
 
-    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Insert the new user
     await sql`
       INSERT INTO users (name, email, password, phone_number)
       VALUES (${name}, ${email}, ${hashedPassword}, ${phoneNumber})
