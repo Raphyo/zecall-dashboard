@@ -9,7 +9,8 @@ export const USER_ID_MAPPING: UserMapping = {
   'sachalellouche@gmail.com': '5bbe0db8-0cd5-4dcf-9e4e-8f849bf4d3be',
   'slellouche@zecall.ai': 'ba8d1b9f-a14c-4792-8835-06c6bd7f3aa4',
   'dcambon.spi@gmail.com': 'e99df9f9-cb29-4a50-afe2-c0d3dbead1c1',
-  'contact@ilcaffeditalia.fr': '4c819f6f-e60e-4211-b32d-1e40ce552dcc'
+  'contact@ilcaffeditalia.fr': '4c819f6f-e60e-4211-b32d-1e40ce552dcc',
+  'david.diouf@hotmail.fr': 'f8c61a37-45c5-4ebb-a85f-6751f5b8933e'
 };
 
 export function getUserIdFromEmail(email: string | null | undefined): string | null {

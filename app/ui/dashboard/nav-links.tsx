@@ -24,7 +24,8 @@ const LOCKED_USERS = [
   'sachalellouche@gmail.com',
   'slellouche@zecall.ai',
   'dcambon.spi@gmail.com',
-  'contact@ilcaffeditalia.fr'
+  'contact@ilcaffeditalia.fr',
+  'david.diouf@hotmail.fr'
   // Add more emails as needed
 ];
 
