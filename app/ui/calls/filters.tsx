@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   FunnelIcon, 
   XMarkIcon,
@@ -8,6 +8,8 @@ import {
   ChevronUpIcon,
   PhoneIcon
 } from '@heroicons/react/24/outline';
+import { useSession } from 'next-auth/react';
+import { getCampaigns, type Campaign } from '@/app/lib/api';
 
 interface FiltersProps {
   onFilterChange: (filters: FilterState) => void;
@@ -19,17 +21,33 @@ export interface FilterState {
   category: string;
   startDate: string;
   endDate: string;
+  campaignId: string;
 }
 
 export function Filters({ onFilterChange }: FiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const { data: session } = useSession();
   const [filters, setFilters] = useState<FilterState>({
     callerNumber: '',
     calleeNumber: '',
     category: '',
     startDate: '',
     endDate: '',
+    campaignId: '',
   });
+
+  useEffect(() => {
+    const loadCampaigns = async () => {
+      try {
+        const data = await getCampaigns(session?.user?.email);
+        setCampaigns(data);
+      } catch (err) {
+        console.error('Error loading campaigns:', err);
+      }
+    };
+    loadCampaigns();
+  }, [session]);
 
   const handleFilterChange = (key: keyof FilterState, value: string) => {
     const newFilters = { ...filters, [key]: value };
@@ -44,6 +62,7 @@ export function Filters({ onFilterChange }: FiltersProps) {
       category: '',
       startDate: '',
       endDate: '',
+      campaignId: '',
     };
     setFilters(resetFilters);
     onFilterChange(resetFilters);
@@ -148,6 +167,26 @@ export function Filters({ onFilterChange }: FiltersProps) {
                      category === 'Booking modification' ? 'Modification' :
                      category === 'Booking cancellation' ? 'Annulation' :
                      category === 'Information' ? 'Information' : 'Inconnu'}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Campaign */}
+            <div>
+              <label htmlFor="campaign" className="block text-sm font-medium text-gray-700 mb-1">
+                Campagne
+              </label>
+              <select
+                id="campaign"
+                value={filters.campaignId}
+                onChange={(e) => handleFilterChange('campaignId', e.target.value)}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              >
+                <option value="">Toutes les campagnes</option>
+                {campaigns.map((campaign) => (
+                  <option key={campaign.id} value={campaign.id}>
+                    {campaign.name}
                   </option>
                 ))}
               </select>

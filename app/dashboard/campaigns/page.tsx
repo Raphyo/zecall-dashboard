@@ -183,7 +183,7 @@ export default function CampaignsPage() {
                           className="fixed -ml-[144px] z-[100] mt-2 w-48 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
                         >
                           <div className="py-1">
-                            <Menu.Item>
+                            {/* <Menu.Item>
                               {({ active }: { active: boolean }) => (
                                 <Link
                                   href={`/dashboard/campaigns/${campaign.id}/edit`}
@@ -194,7 +194,7 @@ export default function CampaignsPage() {
                                   Modifier
                                 </Link>
                               )}
-                            </Menu.Item>
+                            </Menu.Item> */}
                             <Menu.Item>
                               {({ active }: { active: boolean }) => (
                                 <button

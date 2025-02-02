@@ -3,13 +3,14 @@
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getCalls, updateCampaignStatus } from '@/app/lib/api';
-import { PlayCircleIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { TEMP_USER_ID } from '@/app/lib/constants';
 import type { Call } from '@/app/ui/calls/types';
 import { AudioPlayer } from '@/app/ui/calls/audio-player';
 import { TranscriptModal } from '@/app/ui/modals/transcript-modal';
 import { Filters, FilterState } from '@/app/ui/calls/filters';
 import { useSession } from 'next-auth/react';
+import { exportCallsToCSV } from '@/app/lib/utils';
 
 function CallHistoryContent() {
   const [calls, setCalls] = useState<Call[]>([]);
@@ -116,6 +117,8 @@ function CallHistoryContent() {
         call.callee_number.toLowerCase().includes(filters.calleeNumber.toLowerCase());
       const matchCategory = !filters.category || 
         call.call_category === filters.category;
+      const matchCampaign = !filters.campaignId ||
+        call.campaign_id === filters.campaignId;
       
       // Date filtering
       const callDate = new Date(call.date);
@@ -125,7 +128,7 @@ function CallHistoryContent() {
       const matchDates = (!startDate || callDate >= startDate) && 
                         (!endDate || callDate <= endDate);
       
-      return matchCallerNumber && matchCalleeNumber && matchCategory && matchDates;
+      return matchCallerNumber && matchCalleeNumber && matchCategory && matchCampaign && matchDates;
     });
     setFilteredCalls(filtered);
   };
@@ -134,16 +137,25 @@ function CallHistoryContent() {
     <div className="w-full">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Historique des appels</h1>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Rechercher des appels..."
-            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
-          />
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => exportCallsToCSV(filteredCalls)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            <ArrowDownTrayIcon className="w-5 h-5" />
+            Exporter CSV
+          </button>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Rechercher des appels..."
+              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
           </div>
         </div>
       </div>

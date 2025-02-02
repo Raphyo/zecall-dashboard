@@ -21,7 +21,7 @@ const LOCKED_USERS = [
   'raphaelvannerom@gmail.com',
   'rvannerom@zecall.ai',
   'team.zecall@gmail.com',
-  'sachalellouche@gmail.com',
+  // 'sachalellouche@gmail.com',
   'slellouche@zecall.ai',
   'dcambon.spi@gmail.com',
   'contact@ilcaffeditalia.fr',
