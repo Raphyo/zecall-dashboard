@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getCalls, getCampaigns } from '@/app/lib/api';
+import { getCalls, getCampaigns, updateCampaignStatus } from '@/app/lib/api';
 import { useSession } from 'next-auth/react';
 import { 
   PhoneArrowUpRightIcon, 
@@ -30,8 +30,10 @@ interface RecentCall {
   direction: string;
   caller_number: string;
   date: string;
+  hour: string;
   duration: number;
   call_category: string;
+  call_status: string;
 }
 
 interface Campaign {
@@ -73,12 +75,39 @@ export default function DashboardPage() {
       try {
         setIsLoading(true);
         const calls = await getCalls(session.user.email);
+        const campaigns = await getCampaigns(session.user.email);
         
-        // Get recent calls (last 5)
+        // Get recent calls (last 10)
         const recent = calls
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          .slice(0, 5);
+          .filter(call => call.date && call.hour) // Ensure we have valid date and hour
+          .sort((a, b) => {
+            const dateA = new Date(a.date + ' ' + a.hour);
+            const dateB = new Date(b.date + ' ' + b.hour);
+            return dateB.getTime() - dateA.getTime();
+          })
+          .slice(0, 10);
         setRecentCalls(recent);
+
+        // Check and update campaign statuses
+        for (const campaign of campaigns) {
+          if (campaign.status !== 'terminée') {
+            const campaignCalls = calls.filter(call => call.campaign_id === campaign.id);
+            if (campaignCalls.length > 0 && campaignCalls.length >= campaign.contacts_count) {
+              const allCallsCompleted = campaignCalls.every(call => 
+                call.call_status === 'completed' || call.call_status === 'failed'
+              );
+              
+              if (allCallsCompleted) {
+                try {
+                  await updateCampaignStatus(campaign.id, 'terminée');
+                  campaign.status = 'terminée'; // Update local state
+                } catch (error) {
+                  console.error('Error updating campaign status:', error);
+                }
+              }
+            }
+          }
+        }
 
         // Get today's and yesterday's dates
         const today = new Date();
@@ -111,7 +140,7 @@ export default function DashboardPage() {
         const inboundCalls = calls.filter(call => call.direction === 'entrant').length;
         const outboundCalls = calls.filter(call => call.direction === 'sortant').length;
 
-        // Calculate average duration 
+        // Calculate total duration (in seconds)
         const totalDuration = calls.reduce((sum, call) => sum + (call.duration || 0), 0);
         const avgDuration = calls.length > 0 ? Math.round(totalDuration / calls.length) : 0;
 
@@ -120,7 +149,6 @@ export default function DashboardPage() {
         const avgCallsPerDay = dates.length > 0 ? Math.round(calls.length / dates.length) : 0;
 
         // Get active campaigns
-        const campaigns = await getCampaigns(session.user.email);
         const active = campaigns
           .filter(c => c.status !== 'terminée')
           .map(c => ({
@@ -151,6 +179,11 @@ export default function DashboardPage() {
     };
 
     loadDashboardData();
+
+    // Set up periodic refresh
+    const refreshInterval = setInterval(loadDashboardData, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(refreshInterval);
   }, [session?.user?.email, status]);
 
   // Show loading state
@@ -296,21 +329,21 @@ export default function DashboardPage() {
               {recentCalls.map(call => (
                 <div key={call.id} className="flex items-center gap-4">
                   <div className={`p-2 rounded-full ${
-                    call.direction === 'entrant' ? 'bg-blue-50' : 'bg-green-50'
+                    call.direction === 'sortant' ? 'bg-green-50' : 'bg-blue-50'
                   }`}>
-                    {call.direction === 'entrant' ? 
-                      <PhoneArrowDownLeftIcon className="w-5 h-5 text-blue-600" /> :
-                      <PhoneArrowUpRightIcon className="w-5 h-5 text-green-600" />
+                    {call.direction === 'sortant' ? 
+                      <PhoneArrowUpRightIcon className="w-5 h-5 text-green-600" /> :
+                      <PhoneArrowDownLeftIcon className="w-5 h-5 text-blue-600" />
                     }
                   </div>
                   <div className="flex-1">
                     <p className="font-medium">{call.caller_number}</p>
                     <div className="flex items-center gap-2">
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                        {call.call_category}
+                        {call.call_status}
                       </span>
                       <p className="text-sm text-gray-500">
-                        {formatDistanceToNow(new Date(call.date), { 
+                        {formatDistanceToNow(new Date(call.date + ' ' + call.hour), { 
                           addSuffix: true,
                           locale: fr 
                         })}
@@ -320,6 +353,9 @@ export default function DashboardPage() {
                   <div className="text-sm text-gray-500">{formatDuration(call.duration)}</div>
                 </div>
               ))}
+              {recentCalls.length === 0 && (
+                <p className="text-center text-gray-500">Aucun appel récent</p>
+              )}
             </div>
           </div>
 
