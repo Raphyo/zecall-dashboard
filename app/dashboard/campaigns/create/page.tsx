@@ -308,6 +308,7 @@ export default function CreateCampaignPage() {
                         onChange={(e) => setCampaign({ ...campaign, retry_frequency: parseInt(e.target.value) })}
                         className="block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                       >
+                        <option value={1}>1 minute</option>
                         <option value={5}>5 minutes</option>
                         <option value={1440}>1 jour</option>
                         <option value={2880}>2 jours</option>

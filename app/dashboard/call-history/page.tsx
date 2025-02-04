@@ -133,6 +133,29 @@ function CallHistoryContent() {
     setFilteredCalls(filtered);
   };
 
+  const getCategoryStyle = (category: string) => {
+    // Array of predefined color combinations
+    const colorStyles = [
+      'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20',
+      'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20',
+      'bg-violet-50 text-violet-700 ring-1 ring-violet-600/20',
+      'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20',
+      'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20',
+      'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-600/20',
+      'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/20',
+      'bg-fuchsia-50 text-fuchsia-700 ring-1 ring-fuchsia-600/20'
+    ];
+
+    // Simple hash function to get consistent index for each category
+    const hash = category.split('').reduce((acc, char) => {
+      return char.charCodeAt(0) + ((acc << 5) - acc);
+    }, 0);
+
+    // Get positive modulo
+    const index = Math.abs(hash) % colorStyles.length;
+    return colorStyles[index];
+  };
+
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-8">
@@ -226,8 +249,10 @@ function CallHistoryContent() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.direction}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {formatCallCategory(call.call_category)}
+                      <td className="whitespace-nowrap px-3 py-4 text-sm">
+                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getCategoryStyle(call.call_category)}`}>
+                          {call.call_category}
+                        </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {new Date(call.date).toLocaleDateString()} {call.hour}
