@@ -342,6 +342,11 @@ export default function DashboardPage() {
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
                         {call.call_status}
                       </span>
+                      {call.call_category && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          {call.call_category}
+                        </span>
+                      )}
                       <p className="text-sm text-gray-500">
                         {formatDistanceToNow(new Date(call.date + ' ' + call.hour), { 
                           addSuffix: true,
