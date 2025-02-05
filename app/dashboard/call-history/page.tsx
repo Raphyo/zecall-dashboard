@@ -177,6 +177,14 @@ function CallHistoryContent() {
     return statusStyles[status] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20';
   };
 
+  const getDirectionStyle = (direction: string) => {
+    const directionStyles: { [key: string]: string } = {
+      'entrant': 'bg-sky-50 text-sky-700 ring-1 ring-sky-600/20',
+      'sortant': 'bg-green-50 text-green-700 ring-1 ring-green-600/20'
+    };
+    return directionStyles[direction] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20';
+  };
+
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-8">
@@ -255,8 +263,10 @@ function CallHistoryContent() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.caller_name}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {call.direction}
+                      <td className="whitespace-nowrap px-3 py-4 text-sm">
+                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getDirectionStyle(call.direction)}`}>
+                          {call.direction}
+                        </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
                         <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getCategoryStyle(call.call_category)}`}>
