@@ -137,16 +137,21 @@ function CallHistoryContent() {
   };
 
   const getCategoryStyle = (category: string) => {
-    // Array of predefined color combinations
+    // Special case for "inconnue" category
+    if (category === 'inconnue') {
+      return 'bg-red-50 text-red-700 ring-1 ring-red-600/20';
+    }
+
+    // Array of predefined color combinations for other categories
     const colorStyles = [
       'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20',
       'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20',
       'bg-violet-50 text-violet-700 ring-1 ring-violet-600/20',
       'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20',
-      'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20',
       'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-600/20',
       'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/20',
-      'bg-fuchsia-50 text-fuchsia-700 ring-1 ring-fuchsia-600/20'
+      'bg-fuchsia-50 text-fuchsia-700 ring-1 ring-fuchsia-600/20',
+      'bg-teal-50 text-teal-700 ring-1 ring-teal-600/20'
     ];
 
     // Simple hash function to get consistent index for each category
@@ -157,6 +162,19 @@ function CallHistoryContent() {
     // Get positive modulo
     const index = Math.abs(hash) % colorStyles.length;
     return colorStyles[index];
+  };
+
+  const getStatusStyle = (status: string) => {
+    const statusStyles: { [key: string]: string } = {
+      'terminé': 'bg-green-50 text-green-700 ring-1 ring-green-600/20',
+      'échoué': 'bg-red-50 text-red-700 ring-1 ring-red-600/20',
+      'sans réponse': 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20',
+      'occupé': 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20',
+      'en-cours': 'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20',
+      'sonne': 'bg-purple-50 text-purple-700 ring-1 ring-purple-600/20',
+      'initié': 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/20'
+    };
+    return statusStyles[status] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20';
   };
 
   return (
@@ -251,8 +269,10 @@ function CallHistoryContent() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {formatDuration(call.duration)}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {call.call_status}
+                      <td className="whitespace-nowrap px-3 py-4 text-sm">
+                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getStatusStyle(call.call_status)}`}>
+                          {call.call_status}
+                        </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.campaign_name || '-'}
