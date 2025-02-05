@@ -85,7 +85,9 @@ export function Filters({ onFilterChange }: FiltersProps) {
     'échoué',
     'sans réponse',
     'occupé',
-    'en-cours'
+    'en-cours',
+    'sonne',
+    'initié'
   ];
 
   return (
