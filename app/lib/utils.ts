@@ -1,3 +1,4 @@
+import { Call } from '@/app/ui/calls/types';
 
 export const formatDuration = (seconds: number): string => {
   if (!seconds || isNaN(seconds) || !isFinite(seconds)) {
@@ -62,3 +63,57 @@ export const generatePagination = (currentPage: number, totalPages: number) => {
     totalPages,
   ];
 };
+
+export function exportCallsToCSV(calls: Call[]) {
+  // Define CSV headers
+  const headers = [
+    'ID',
+    'Appelant',
+    'Destinataire',
+    'Nom',
+    'Direction',
+    'Date',
+    'Heure',
+    'Durée',
+    'Statut',
+    'Campagne'
+  ];
+
+  // Convert calls to CSV rows
+  const rows = calls.map(call => [
+    call.id,
+    call.caller_number,
+    call.callee_number,
+    call.caller_name,
+    call.direction,
+    new Date(call.date).toLocaleDateString(),
+    call.hour,
+    call.duration,
+    call.call_status,
+    call.campaign_name || '-'
+  ]);
+
+  // Combine headers and rows
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(row => row.join(','))
+  ].join('\n');
+
+  // Format the date for the filename
+  const date = new Date();
+  const month = date.toLocaleString('en-US', { month: 'short' });
+  const day = date.getDate();
+  const year = date.getFullYear();
+  const filename = `appels_${month}_${day}_${year}.csv`;
+
+  // Create blob and download
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}

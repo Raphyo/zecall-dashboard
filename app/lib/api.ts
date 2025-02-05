@@ -32,6 +32,8 @@ export interface Campaign {
     scheduled_date?: string;
     created_at: string;
     user_id: string;
+    retry_frequency?: number;
+    max_retries?: number;
 }
 
 export interface PhoneNumber {

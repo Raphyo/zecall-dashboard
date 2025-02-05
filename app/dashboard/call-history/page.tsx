@@ -3,13 +3,14 @@
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getCalls, updateCampaignStatus } from '@/app/lib/api';
-import { PlayCircleIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
+import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { TEMP_USER_ID } from '@/app/lib/constants';
 import type { Call } from '@/app/ui/calls/types';
 import { AudioPlayer } from '@/app/ui/calls/audio-player';
 import { TranscriptModal } from '@/app/ui/modals/transcript-modal';
 import { Filters, FilterState } from '@/app/ui/calls/filters';
 import { useSession } from 'next-auth/react';
+import { exportCallsToCSV } from '@/app/lib/utils';
 
 function CallHistoryContent() {
   const [calls, setCalls] = useState<Call[]>([]);
@@ -116,6 +117,10 @@ function CallHistoryContent() {
         call.callee_number.toLowerCase().includes(filters.calleeNumber.toLowerCase());
       const matchCategory = !filters.category || 
         call.call_category === filters.category;
+      const matchCampaign = !filters.campaignId ||
+        call.campaign_id === filters.campaignId;
+      const matchStatus = !filters.callStatus ||
+        call.call_status === filters.callStatus;
       
       // Date filtering
       const callDate = new Date(call.date);
@@ -125,26 +130,65 @@ function CallHistoryContent() {
       const matchDates = (!startDate || callDate >= startDate) && 
                         (!endDate || callDate <= endDate);
       
-      return matchCallerNumber && matchCalleeNumber && matchCategory && matchDates;
+      return matchCallerNumber && matchCalleeNumber && matchCategory && 
+             matchCampaign && matchDates && matchStatus;
     });
     setFilteredCalls(filtered);
+  };
+
+  const getCategoryStyle = (category: string) => {
+    // Special case for "inconnue" category
+    if (category === 'inconnue') {
+      return 'bg-red-50 text-red-700 ring-1 ring-red-600/20';
+    }
+
+    // Array of predefined color combinations for other categories
+    const colorStyles = [
+      'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20',
+      'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20',
+      'bg-violet-50 text-violet-700 ring-1 ring-violet-600/20',
+      'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20',
+      'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-600/20',
+      'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/20',
+      'bg-fuchsia-50 text-fuchsia-700 ring-1 ring-fuchsia-600/20',
+      'bg-teal-50 text-teal-700 ring-1 ring-teal-600/20'
+    ];
+
+    // Simple hash function to get consistent index for each category
+    const hash = category.split('').reduce((acc, char) => {
+      return char.charCodeAt(0) + ((acc << 5) - acc);
+    }, 0);
+
+    // Get positive modulo
+    const index = Math.abs(hash) % colorStyles.length;
+    return colorStyles[index];
+  };
+
+  const getStatusStyle = (status: string) => {
+    const statusStyles: { [key: string]: string } = {
+      'terminé': 'bg-green-50 text-green-700 ring-1 ring-green-600/20',
+      'échoué': 'bg-red-50 text-red-700 ring-1 ring-red-600/20',
+      'sans réponse': 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20',
+      'occupé': 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20',
+      'en-cours': 'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20',
+      'sonne': 'bg-purple-50 text-purple-700 ring-1 ring-purple-600/20',
+      'initié': 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600/20'
+    };
+    return statusStyles[status] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20';
   };
 
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Historique des appels</h1>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Rechercher des appels..."
-            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
-          />
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => exportCallsToCSV(filteredCalls)}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+          >
+            <ArrowDownTrayIcon className="w-5 h-5" />
+            Exporter CSV
+          </button>
         </div>
       </div>
 
@@ -175,6 +219,9 @@ function CallHistoryContent() {
                     </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
                       Direction
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Catégorie
                     </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
                       Date
@@ -211,14 +258,21 @@ function CallHistoryContent() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.direction}
                       </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm">
+                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getCategoryStyle(call.call_category)}`}>
+                          {call.call_category}
+                        </span>
+                      </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {new Date(call.date).toLocaleDateString()} {call.hour}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {formatDuration(call.duration)}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {call.call_status}
+                      <td className="whitespace-nowrap px-3 py-4 text-sm">
+                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getStatusStyle(call.call_status)}`}>
+                          {call.call_status}
+                        </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.campaign_name || '-'}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getCalls, getCampaigns } from '@/app/lib/api';
+import { getCalls, getCampaigns, updateCampaignStatus } from '@/app/lib/api';
 import { useSession } from 'next-auth/react';
 import { 
   PhoneArrowUpRightIcon, 
@@ -30,8 +30,10 @@ interface RecentCall {
   direction: string;
   caller_number: string;
   date: string;
+  hour: string;
   duration: number;
   call_category: string;
+  call_status: string;
 }
 
 interface Campaign {
@@ -49,7 +51,12 @@ export default function DashboardPage() {
     inboundCalls: 0,
     outboundCalls: 0,
     avgDuration: 0,
-    avgCallsPerDay: 0
+    avgCallsPerDay: 0,
+    todayInbound: 0,
+    todayOutbound: 0,
+    yesterdayInbound: 0,
+    yesterdayOutbound: 0,
+    totalDuration: 0
   });
   const [recentCalls, setRecentCalls] = useState<RecentCall[]>([]);
   const [activeCampaigns, setActiveCampaigns] = useState<Campaign[]>([]);
@@ -68,19 +75,72 @@ export default function DashboardPage() {
       try {
         setIsLoading(true);
         const calls = await getCalls(session.user.email);
+        const campaigns = await getCampaigns(session.user.email);
         
-        // Get recent calls (last 5)
+        // Get recent calls (last 10)
         const recent = calls
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-          .slice(0, 5);
+          .filter(call => call.date && call.hour) // Ensure we have valid date and hour
+          .sort((a, b) => {
+            const dateA = new Date(a.date + ' ' + a.hour);
+            const dateB = new Date(b.date + ' ' + b.hour);
+            return dateB.getTime() - dateA.getTime();
+          })
+          .slice(0, 10);
         setRecentCalls(recent);
 
-        // Count calls by direction
+        // Check and update campaign statuses
+        for (const campaign of campaigns) {
+          if (campaign.status !== 'terminée') {
+            const campaignCalls = calls.filter(call => call.campaign_id === campaign.id);
+            if (campaignCalls.length > 0 && campaignCalls.length >= campaign.contacts_count) {
+              const allCallsCompleted = campaignCalls.every(call => 
+                call.call_status === 'completed' || call.call_status === 'failed'
+              );
+              
+              if (allCallsCompleted) {
+                try {
+                  await updateCampaignStatus(campaign.id, 'terminée');
+                  campaign.status = 'terminée'; // Update local state
+                } catch (error) {
+                  console.error('Error updating campaign status:', error);
+                }
+              }
+            }
+          }
+        }
+
+        // Get today's and yesterday's dates
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        // Filter calls for today and yesterday
+        const todayCalls = calls.filter(call => {
+          const callDate = new Date(call.date);
+          return callDate >= today && callDate < tomorrow;
+        });
+
+        const yesterdayCalls = calls.filter(call => {
+          const callDate = new Date(call.date);
+          return callDate >= yesterday && callDate < today;
+        });
+
+        // Count today's calls by direction
+        const todayInbound = todayCalls.filter(call => call.direction === 'entrant').length;
+        const todayOutbound = todayCalls.filter(call => call.direction === 'sortant').length;
+
+        // Count yesterday's calls by direction
+        const yesterdayInbound = yesterdayCalls.filter(call => call.direction === 'entrant').length;
+        const yesterdayOutbound = yesterdayCalls.filter(call => call.direction === 'sortant').length;
+
+        // Count total calls by direction
         const inboundCalls = calls.filter(call => call.direction === 'entrant').length;
         const outboundCalls = calls.filter(call => call.direction === 'sortant').length;
-        const unknownCalls = calls.filter(call => call.direction === 'inconnu').length;
 
-        // Calculate average duration (in seconds)
+        // Calculate total duration (in seconds)
         const totalDuration = calls.reduce((sum, call) => sum + (call.duration || 0), 0);
         const avgDuration = calls.length > 0 ? Math.round(totalDuration / calls.length) : 0;
 
@@ -89,7 +149,6 @@ export default function DashboardPage() {
         const avgCallsPerDay = dates.length > 0 ? Math.round(calls.length / dates.length) : 0;
 
         // Get active campaigns
-        const campaigns = await getCampaigns(session.user.email);
         const active = campaigns
           .filter(c => c.status !== 'terminée')
           .map(c => ({
@@ -105,7 +164,12 @@ export default function DashboardPage() {
           inboundCalls,
           outboundCalls,
           avgDuration,
-          avgCallsPerDay
+          avgCallsPerDay,
+          todayInbound,
+          todayOutbound,
+          yesterdayInbound,
+          yesterdayOutbound,
+          totalDuration
         });
       } catch (error) {
         console.error('Error loading dashboard data:', error);
@@ -115,6 +179,11 @@ export default function DashboardPage() {
     };
 
     loadDashboardData();
+
+    // Set up periodic refresh
+    const refreshInterval = setInterval(loadDashboardData, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(refreshInterval);
   }, [session?.user?.email, status]);
 
   // Show loading state
@@ -130,7 +199,8 @@ export default function DashboardPage() {
           </div>
 
           {/* Stats Grid Skeleton */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
             <SkeletonCard />
@@ -150,6 +220,12 @@ export default function DashboardPage() {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  const formatTotalDuration = (seconds: number) => {
+    if (!seconds) return '0 min';
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes} min`;
   };
 
   return (
@@ -173,27 +249,47 @@ export default function DashboardPage() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          {/* Today's Inbound Calls */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500">Appels Entrants</h3>
+              <h3 className="text-sm font-medium text-gray-500">Appels Entrants (Aujourd'hui)</h3>
               <span className="p-2 bg-blue-50 rounded-lg">
                 <PhoneArrowDownLeftIcon className="w-5 h-5 text-blue-600" />
               </span>
             </div>
-            <p className="text-2xl font-semibold text-gray-900">{stats.inboundCalls}</p>
+            <div>
+              <p className="text-2xl font-semibold text-gray-900">{stats.todayInbound}</p>
+              <p className="text-sm text-gray-500 mt-1">Hier: {stats.yesterdayInbound}</p>
+            </div>
           </div>
 
+          {/* Today's Outbound Calls */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500">Appels Sortants</h3>
+              <h3 className="text-sm font-medium text-gray-500">Appels Sortants (Aujourd'hui)</h3>
               <span className="p-2 bg-green-50 rounded-lg">
                 <PhoneArrowUpRightIcon className="w-5 h-5 text-green-600" />
               </span>
             </div>
-            <p className="text-2xl font-semibold text-gray-900">{stats.outboundCalls}</p>
+            <div>
+              <p className="text-2xl font-semibold text-gray-900">{stats.todayOutbound}</p>
+              <p className="text-sm text-gray-500 mt-1">Hier: {stats.yesterdayOutbound}</p>
+            </div>
           </div>
 
+          {/* Total Duration */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">Temps Total d'Appel</h3>
+              <span className="p-2 bg-yellow-50 rounded-lg">
+                <ClockIcon className="w-5 h-5 text-yellow-600" />
+              </span>
+            </div>
+            <p className="text-2xl font-semibold text-gray-900">{formatTotalDuration(stats.totalDuration)}</p>
+          </div>
+
+          {/* Average Duration */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-medium text-gray-500">Durée Moyenne</h3>
@@ -204,14 +300,24 @@ export default function DashboardPage() {
             <p className="text-2xl font-semibold text-gray-900">{formatDuration(stats.avgDuration)}</p>
           </div>
 
+          {/* Total Calls */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500">Appels par Jour</h3>
+              <h3 className="text-sm font-medium text-gray-500">Total des Appels</h3>
               <span className="p-2 bg-indigo-50 rounded-lg">
                 <PhoneIcon className="w-5 h-5 text-indigo-600" />
               </span>
             </div>
-            <p className="text-2xl font-semibold text-gray-900">{stats.avgCallsPerDay}</p>
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <PhoneArrowDownLeftIcon className="w-4 h-4 text-blue-600" />
+                <p className="text-lg font-semibold text-gray-900">{stats.inboundCalls} entrants</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <PhoneArrowUpRightIcon className="w-4 h-4 text-green-600" />
+                <p className="text-lg font-semibold text-gray-900">{stats.outboundCalls} sortants</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -223,21 +329,26 @@ export default function DashboardPage() {
               {recentCalls.map(call => (
                 <div key={call.id} className="flex items-center gap-4">
                   <div className={`p-2 rounded-full ${
-                    call.direction === 'entrant' ? 'bg-blue-50' : 'bg-green-50'
+                    call.direction === 'sortant' ? 'bg-green-50' : 'bg-blue-50'
                   }`}>
-                    {call.direction === 'entrant' ? 
-                      <PhoneArrowDownLeftIcon className="w-5 h-5 text-blue-600" /> :
-                      <PhoneArrowUpRightIcon className="w-5 h-5 text-green-600" />
+                    {call.direction === 'sortant' ? 
+                      <PhoneArrowUpRightIcon className="w-5 h-5 text-green-600" /> :
+                      <PhoneArrowDownLeftIcon className="w-5 h-5 text-blue-600" />
                     }
                   </div>
                   <div className="flex-1">
                     <p className="font-medium">{call.caller_number}</p>
                     <div className="flex items-center gap-2">
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                        {call.call_category}
+                        {call.call_status}
                       </span>
+                      {call.call_category && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          {call.call_category}
+                        </span>
+                      )}
                       <p className="text-sm text-gray-500">
-                        {formatDistanceToNow(new Date(call.date), { 
+                        {formatDistanceToNow(new Date(call.date + ' ' + call.hour), { 
                           addSuffix: true,
                           locale: fr 
                         })}
@@ -247,6 +358,9 @@ export default function DashboardPage() {
                   <div className="text-sm text-gray-500">{formatDuration(call.duration)}</div>
                 </div>
               ))}
+              {recentCalls.length === 0 && (
+                <p className="text-center text-gray-500">Aucun appel récent</p>
+              )}
             </div>
           </div>
 
