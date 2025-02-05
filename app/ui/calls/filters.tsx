@@ -9,7 +9,7 @@ import {
   PhoneIcon
 } from '@heroicons/react/24/outline';
 import { useSession } from 'next-auth/react';
-import { getCampaigns, type Campaign } from '@/app/lib/api';
+import { getCampaigns, getCalls, type Campaign } from '@/app/lib/api';
 
 interface FiltersProps {
   onFilterChange: (filters: FilterState) => void;
@@ -22,11 +22,13 @@ export interface FilterState {
   startDate: string;
   endDate: string;
   campaignId: string;
+  callStatus: string;
 }
 
 export function Filters({ onFilterChange }: FiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const { data: session } = useSession();
   const [filters, setFilters] = useState<FilterState>({
     callerNumber: '',
@@ -35,18 +37,27 @@ export function Filters({ onFilterChange }: FiltersProps) {
     startDate: '',
     endDate: '',
     campaignId: '',
+    callStatus: '',
   });
 
   useEffect(() => {
-    const loadCampaigns = async () => {
+    const loadData = async () => {
       try {
-        const data = await getCampaigns(session?.user?.email);
-        setCampaigns(data);
+        // Load campaigns
+        const campaignsData = await getCampaigns(session?.user?.email);
+        setCampaigns(campaignsData);
+
+        // Load calls to get unique categories
+        const calls = await getCalls(session?.user?.email);
+        const uniqueCategories = [...new Set(calls.map(call => call.call_category))].filter(Boolean);
+        setCategories(uniqueCategories);
       } catch (err) {
-        console.error('Error loading campaigns:', err);
+        console.error('Error loading data:', err);
       }
     };
-    loadCampaigns();
+    if (session?.user?.email) {
+      loadData();
+    }
   }, [session]);
 
   const handleFilterChange = (key: keyof FilterState, value: string) => {
@@ -63,19 +74,18 @@ export function Filters({ onFilterChange }: FiltersProps) {
       startDate: '',
       endDate: '',
       campaignId: '',
+      callStatus: '',
     };
     setFilters(resetFilters);
     onFilterChange(resetFilters);
   };
 
-  const categories = [
-    'New booking',
-    'Booking modification',
-    'Booking cancellation',
-    'Information',
-    'Outbound',
-    'Inbound',
-    'unknown'
+  const callStatuses = [
+    'terminé',
+    'échoué',
+    'sans réponse',
+    'occupé',
+    'en-cours'
   ];
 
   return (
@@ -160,14 +170,7 @@ export function Filters({ onFilterChange }: FiltersProps) {
               >
                 <option value="">Toutes les catégories</option>
                 {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category === 'Outbound' ? 'Sortant' :
-                     category === 'Inbound' ? 'Entrant' :
-                     category === 'New booking' ? 'Nouvelle réservation' :
-                     category === 'Booking modification' ? 'Modification' :
-                     category === 'Booking cancellation' ? 'Annulation' :
-                     category === 'Information' ? 'Information' : 'Inconnu'}
-                  </option>
+                  <option key={category} value={category}>{category}</option>
                 ))}
               </select>
             </div>
@@ -188,6 +191,24 @@ export function Filters({ onFilterChange }: FiltersProps) {
                   <option key={campaign.id} value={campaign.id}>
                     {campaign.name}
                   </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Call Status */}
+            <div>
+              <label htmlFor="callStatus" className="block text-sm font-medium text-gray-700 mb-1">
+                Statut
+              </label>
+              <select
+                id="callStatus"
+                value={filters.callStatus}
+                onChange={(e) => handleFilterChange('callStatus', e.target.value)}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              >
+                <option value="">Tous les statuts</option>
+                {callStatuses.map((status) => (
+                  <option key={status} value={status}>{status}</option>
                 ))}
               </select>
             </div>

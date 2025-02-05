@@ -119,6 +119,8 @@ function CallHistoryContent() {
         call.call_category === filters.category;
       const matchCampaign = !filters.campaignId ||
         call.campaign_id === filters.campaignId;
+      const matchStatus = !filters.callStatus ||
+        call.call_status === filters.callStatus;
       
       // Date filtering
       const callDate = new Date(call.date);
@@ -128,7 +130,8 @@ function CallHistoryContent() {
       const matchDates = (!startDate || callDate >= startDate) && 
                         (!endDate || callDate <= endDate);
       
-      return matchCallerNumber && matchCalleeNumber && matchCategory && matchCampaign && matchDates;
+      return matchCallerNumber && matchCalleeNumber && matchCategory && 
+             matchCampaign && matchDates && matchStatus;
     });
     setFilteredCalls(filtered);
   };
@@ -169,13 +172,6 @@ function CallHistoryContent() {
             Exporter CSV
           </button>
         </div>
-      </div>
-
-      {/* User Email Display - Fixed Position */}
-      <div className="fixed top-4 right-4 z-50 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm border border-gray-200">
-        <p className="text-sm text-gray-600">
-          {session?.user?.email}
-        </p>
       </div>
 
       <Filters onFilterChange={handleFilterChange} />
