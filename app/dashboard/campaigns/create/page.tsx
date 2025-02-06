@@ -155,8 +155,8 @@ export default function CreateCampaignPage() {
       const text = event.target?.result as string;
       // Validate CSV structure
       const headers = text.split('\n')[0].toLowerCase();
-      if (!headers.includes('phone_number') || !headers.includes('name')) {
-        alert('Le fichier CSV doit contenir les colonnes "phone_number" et "name"');
+      if (!headers.includes('phone_number') || !headers.includes('name') || !headers.includes('email')) {
+        alert('Le fichier CSV doit contenir les colonnes "phone_number", "name" et "email"');
         setCampaign(prev => ({ ...prev, contactsFile: null }));
         e.target.value = '';  // Reset the file input
         return;
@@ -288,7 +288,7 @@ export default function CreateCampaignPage() {
                       )}
                     </div>
                     <p className="mt-2 text-sm text-gray-500">
-                      Fichier CSV avec les colonnes "phone_number" et "name"
+                      Fichier CSV avec les colonnes "phone_number", "name" et "email"
                     </p>
                   </div>
                 </section>

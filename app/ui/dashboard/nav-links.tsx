@@ -26,7 +26,7 @@ const LOCKED_USERS = [
   'dcambon.spi@gmail.com',
   'contact@ilcaffeditalia.fr',
 //   'david.diouf@hotmail.fr',
-  'info.formationcanine@gmail.com',
+  // 'info.formationcanine@gmail.com',
   'julien.volkmann@gmail.com'
   // Add more emails as needed
 ];
