@@ -124,6 +124,7 @@ export default function CampaignsPage() {
           <table className="min-w-full divide-y divide-gray-300">
             <thead className="bg-gray-50">
               <tr>
+                <th className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">ID</th>
                 <th className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Nom</th>
                 <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Contacts</th>
                 <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Numéro</th>
@@ -141,6 +142,9 @@ export default function CampaignsPage() {
                   onClick={() => router.push(`/dashboard/call-history?campaign=${campaign.id}`)}
                   className="cursor-pointer hover:bg-gray-50"
                 >
+                  <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-500">
+                    {campaign.id.substring(0, 8)}
+                  </td>
                   <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
                     {campaign.name}
                   </td>
