@@ -4,6 +4,7 @@ export interface Call {
   caller_number: string;
   callee_number: string;
   caller_name: string;
+  user_email?: string;
   call_category: 'New booking' | 'Booking modification' | 'Booking cancellation' | 'Information' | 'unknown';
   date: string;
   duration: number;
