@@ -32,8 +32,8 @@ export default function CreateCampaignPage() {
     scheduled_date: '',
     phoneNumberId: '',
     contactsFile: null,
-    retry_frequency: 5, // Default to 5 minutes
-    max_retries: 2, // Default to 2 attempts
+    retry_frequency: 5,
+    max_retries: 2,
   });
 
   const loadPhoneNumbers = useCallback(async () => {
@@ -85,8 +85,11 @@ export default function CreateCampaignPage() {
       apiFormData.append('name', campaign.name);
       apiFormData.append('contacts_file', campaign.contactsFile as File);
       apiFormData.append('phone_number_id', campaign.phoneNumberId);
-      apiFormData.append('retry_frequency', campaign.retry_frequency.toString());
       apiFormData.append('max_retries', campaign.max_retries.toString());
+      // Only append retry_frequency if max_retries > 1
+      if (campaign.max_retries > 1) {
+        apiFormData.append('retry_frequency', campaign.retry_frequency.toString());
+      }
       // Set status based on submission type
       const status = selectedDate ? 'planifiée' : 'en-cours';
       apiFormData.append('status', status);
@@ -121,7 +124,6 @@ export default function CreateCampaignPage() {
         apiFormData.append('contacts_file', campaign.contactsFile);
       }
       apiFormData.append('phone_number_id', campaign.phoneNumberId);
-      apiFormData.append('retry_frequency', campaign.retry_frequency.toString());
       apiFormData.append('max_retries', campaign.max_retries.toString());
       apiFormData.append('status', 'brouillon');
       const userId = getUserIdFromEmail(session?.user?.email);
@@ -293,54 +295,62 @@ export default function CreateCampaignPage() {
                   </div>
                 </section>
 
-                {/* Add Retry Frequency Section before the Schedule Section */}
+                {/* Add Retry Settings Section before the Schedule Section */}
                 <section className="border-b border-gray-900/10 pb-12">
                   <div>
                     <label className="block text-sm font-medium text-gray-700">
-                      Fréquence de rappel <span className="text-red-500">*</span>
+                      Paramètres de rappel
                     </label>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Délai d'attente avant de recontacter un numéro sans réponse
-                    </p>
-                    <div className="mt-2">
-                      <select
-                        value={campaign.retry_frequency}
-                        onChange={(e) => setCampaign({ ...campaign, retry_frequency: parseInt(e.target.value) })}
-                        className="block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      >
-                        <option value={1}>1 minute</option>
-                        <option value={5}>5 minutes</option>
-                        <option value={1440}>1 jour</option>
-                        <option value={2880}>2 jours</option>
-                        <option value={4320}>3 jours</option>
-                        <option value={5760}>4 jours</option>
-                        <option value={7200}>5 jours</option>
-                        <option value={8640}>6 jours</option>
-                        <option value={10080}>7 jours</option>
-                      </select>
-                    </div>
-                  </div>
-                </section>
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <label className="block text-sm text-gray-700">
+                          Nombre maximum de tentatives
+                        </label>
+                        <select
+                          value={campaign.max_retries}
+                          onChange={(e) => setCampaign({ ...campaign, max_retries: parseInt(e.target.value) })}
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        >
+                          <option value={1}>1 tentative (pas de rappel)</option>
+                          <option value={2}>2 tentatives (1 rappel)</option>
+                          <option value={3}>3 tentatives (2 rappels)</option>
+                          <option value={4}>4 tentatives (3 rappels)</option>
+                          <option value={5}>5 tentatives (4 rappels)</option>
+                          <option value={6}>6 tentatives (5 rappels)</option>
+                          <option value={7}>7 tentatives (6 rappels)</option>
+                          <option value={8}>8 tentatives (7 rappels)</option>
+                          <option value={9}>9 tentatives (8 rappels)</option>
+                          <option value={10}>10 tentatives (9 rappels)</option>
+                          <option value={11}>11 tentatives (10 rappels)</option>
+                          <option value={12}>12 tentatives (11 rappels)</option>
+                          <option value={13}>13 tentatives (12 rappels)</option>
+                          <option value={14}>14 tentatives (13 rappels)</option>
+                          <option value={15}>15 tentatives (14 rappels)</option>
+                        </select>
+                      </div>
 
-                {/* Add Max Retries Section */}
-                <section className="border-b border-gray-900/10 pb-12">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Nombre de tentatives <span className="text-red-500">*</span>
-                    </label>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Nombre maximum de tentatives d'appel pour chaque contact
-                    </p>
-                    <div className="mt-2">
-                      <select
-                        value={campaign.max_retries}
-                        onChange={(e) => setCampaign({ ...campaign, max_retries: parseInt(e.target.value) })}
-                        className="block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      >
-                        {Array.from({ length: 29 }, (_, i) => i + 2).map(num => (
-                          <option key={num} value={num}>{num}</option>
-                        ))}
-                      </select>
+                      {campaign.max_retries > 1 && (
+                        <div>
+                          <label className="block text-sm text-gray-700">
+                            Délai entre les tentatives
+                          </label>
+                          <select
+                            value={campaign.retry_frequency}
+                            onChange={(e) => setCampaign({ ...campaign, retry_frequency: parseInt(e.target.value) })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                          >
+                            <option value={1}>1 minute</option>
+                            <option value={5}>5 minutes</option>
+                            <option value={1440}>1 jour</option>
+                            <option value={2880}>2 jours</option>
+                            <option value={4320}>3 jours</option>
+                            <option value={5760}>4 jours</option>
+                            <option value={7200}>5 jours</option>
+                            <option value={8640}>6 jours</option>
+                            <option value={10080}>7 jours</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </section>
