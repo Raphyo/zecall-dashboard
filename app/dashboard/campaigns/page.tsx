@@ -82,6 +82,16 @@ export default function CampaignsPage() {
     }
   };
 
+  const handleStatusUpdate = async (campaignId: string, newStatus: string) => {
+    try {
+      await updateCampaignStatus(campaignId, newStatus);
+      loadCampaigns(); // Refresh the list
+    } catch (err) {
+      console.error('Error updating campaign status:', err);
+      alert('Erreur lors de la mise à jour du statut de la campagne');
+    }
+  };
+
   useEffect(() => {
     loadCampaigns();
   }, []);
@@ -187,18 +197,6 @@ export default function CampaignsPage() {
                           className="fixed -ml-[144px] z-[100] mt-2 w-48 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
                         >
                           <div className="py-1">
-                            {/* <Menu.Item>
-                              {({ active }: { active: boolean }) => (
-                                <Link
-                                  href={`/dashboard/campaigns/${campaign.id}/edit`}
-                                  className={`${
-                                    active ? 'bg-gray-100' : ''
-                                  } block px-4 py-2 text-sm text-gray-700`}
-                                >
-                                  Modifier
-                                </Link>
-                              )}
-                            </Menu.Item> */}
                             <Menu.Item>
                               {({ active }: { active: boolean }) => (
                                 <button
@@ -211,6 +209,24 @@ export default function CampaignsPage() {
                                 </button>
                               )}
                             </Menu.Item>
+                            {campaign.status === 'en-cours' && (
+                              <Menu.Item>
+                                {({ active }: { active: boolean }) => (
+                                  <button
+                                    onClick={() => {
+                                      if (confirm('Êtes-vous sûr de vouloir arrêter cette campagne ?')) {
+                                        handleStatusUpdate(campaign.id, 'terminée');
+                                      }
+                                    }}
+                                    className={`${
+                                      active ? 'bg-gray-100' : ''
+                                    } block w-full text-left px-4 py-2 text-sm text-gray-700`}
+                                  >
+                                    Arrêter
+                                  </button>
+                                )}
+                              </Menu.Item>
+                            )}
                             <Menu.Item>
                               {({ active }: { active: boolean }) => (
                                 <button
