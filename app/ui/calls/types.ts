@@ -8,12 +8,12 @@ export interface Call {
   duration: number;             // INTEGER NOT NULL
   hour: string;                 // TIME NOT NULL
   recording_url: string;        // TEXT NOT NULL
-  ai_transcript: string | null; // TEXT
-  ai_summary: string | null;    // TEXT
-  callee_number: string | null; // VARCHAR(20)
-  call_status: string | null;   // VARCHAR(20)
+  ai_transcript: string;         // TEXT
+  ai_summary: string;           // TEXT
+  callee_number: string;        // VARCHAR(20)
+  call_status: string;          // VARCHAR(20)
   campaign_id: string;          // UUID
   direction: string;            // VARCHAR(20) NOT NULL DEFAULT 'inconnu'
-  caller_email: string | null;  // VARCHAR(255)
+  caller_email: string;         // VARCHAR(255)
   campaign_name?: string;       // From campaigns table join
 }
