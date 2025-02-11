@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id), 
       caller_number VARCHAR(20) NOT NULL,
-      caller_name VARCHAR(255) NOT NULL,
+      user_name VARCHAR(255) NOT NULL,
       call_category VARCHAR(20) NOT NULL,
       date DATE NOT NULL,
       duration INTEGER NOT NULL,

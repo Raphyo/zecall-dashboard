@@ -2,7 +2,7 @@ export interface Call {
   id: string;                    // VARCHAR(100) PRIMARY KEY
   user_id: string;              // UUID NOT NULL
   caller_number: string;        // VARCHAR(20) NOT NULL
-  caller_name: string;          // VARCHAR(255) NOT NULL
+  user_name: string;          // VARCHAR(255) NOT NULL
   call_category: string;        // VARCHAR(100) NOT NULL
   date: string;                 // DATE NOT NULL
   duration: number;             // INTEGER NOT NULL
@@ -14,6 +14,6 @@ export interface Call {
   call_status: string;          // VARCHAR(20)
   campaign_id: string;          // UUID
   direction: string;            // VARCHAR(20) NOT NULL DEFAULT 'inconnu'
-  caller_email: string;         // VARCHAR(255)
+  user_email: string;           // VARCHAR(255)
   campaign_name?: string;       // From campaigns table join
 }
