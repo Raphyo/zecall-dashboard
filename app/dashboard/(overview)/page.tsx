@@ -12,6 +12,7 @@ import {
 import { inter } from '@/app/ui/fonts';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale/fr';
+import { Call } from '@/app/ui/calls/types';
 
 function SkeletonCard() {
   return (
@@ -25,16 +26,7 @@ function SkeletonCard() {
   );
 }
 
-interface RecentCall {
-  id: string;
-  direction: string;
-  caller_number: string;
-  date: string;
-  hour: string;
-  duration: number;
-  call_category: string;
-  call_status: string;
-}
+type RecentCall = Pick<Call, 'id' | 'direction' | 'caller_number' | 'date' | 'hour' | 'duration' | 'call_category' | 'call_status'>;
 
 interface Campaign {
   id: string;
@@ -79,13 +71,17 @@ export default function DashboardPage() {
         
         // Get recent calls (last 10)
         const recent = calls
-          .filter(call => call.date && call.hour) // Ensure we have valid date and hour
-          .sort((a, b) => {
-            const dateA = new Date(a.date + ' ' + a.hour);
-            const dateB = new Date(b.date + ' ' + b.hour);
-            return dateB.getTime() - dateA.getTime();
-          })
-          .slice(0, 10);
+        .filter(call => call.date && call.hour) // Ensure we have valid date and hour
+        .sort((a, b) => {
+          const dateA = new Date(a.date + ' ' + a.hour);
+          const dateB = new Date(b.date + ' ' + b.hour);
+          return dateB.getTime() - dateA.getTime();
+        })
+        .map(call => ({
+          ...call,
+          call_status: call.call_status || 'inconnu' // Provide a default value for null
+        }))
+        .slice(0, 10);
         setRecentCalls(recent);
 
         // Check and update campaign statuses
