@@ -84,7 +84,7 @@ export function exportCallsToCSV(calls: Call[]) {
     call.id,
     call.caller_number,
     call.callee_number,
-    call.caller_name,
+    call.user_name,
     call.direction,
     new Date(call.date).toLocaleDateString(),
     call.hour,
