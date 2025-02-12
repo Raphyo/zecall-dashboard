@@ -11,7 +11,7 @@ export const USER_ID_MAPPING: UserMapping = {
   'dcambon.spi@gmail.com': 'e99df9f9-cb29-4a50-afe2-c0d3dbead1c1',
   'contact@ilcaffeditalia.fr': '4c819f6f-e60e-4211-b32d-1e40ce552dcc',
   'david.diouf@hotmail.fr': 'f8c61a37-45c5-4ebb-a85f-6751f5b8933e',
-  'info.formationcanine@gmail.com': '1f7447cb-dc00-45e5-bbf0-e686f8f672f1',
+  'actionenergetique@gmail.com': '1f7447cb-dc00-45e5-bbf0-e686f8f672f1',
   'julien.volkmann@gmail.com': '4b33fa43-83ca-436b-829e-32ed6d7afc90'
 };
 

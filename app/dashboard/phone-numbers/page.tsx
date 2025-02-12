@@ -8,6 +8,13 @@ import { useSession } from 'next-auth/react';
 import { API_URL } from '@/app/lib/api';
 import { getUserIdFromEmail } from '@/app/lib/user-mapping';
 
+// Add list of locked users (copied from nav-links.tsx for consistency)
+const LOCKED_USERS = [
+  'dcambon.spi@gmail.com',
+  'contact@ilcaffeditalia.fr',
+  'julien.volkmann@gmail.com'
+];
+
 export default function PhoneNumbersPage() {
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -15,6 +22,11 @@ export default function PhoneNumbersPage() {
   const [agents, setAgents] = useState<AIAgent[]>([]);
   const [isLoadingAgents, setIsLoadingAgents] = useState(true);
   const { data: session } = useSession();
+
+  const isUserLocked = () => {
+    const userEmail = session?.user?.email;
+    return userEmail && LOCKED_USERS.includes(userEmail);
+  };
 
   const loadPhoneNumbers = async () => {
     try {
@@ -157,9 +169,11 @@ export default function PhoneNumbersPage() {
                   ) : agents.length === 0 ? (
                     <p className="mt-2 text-sm text-gray-500">
                       Aucun agent IA disponible.{' '}
-                      <Link href="/dashboard/ai-agents/create" className="text-blue-600 hover:text-blue-800">
-                        Créer un agent
-                      </Link>
+                      {!isUserLocked() && (
+                        <Link href="/dashboard/ai-agents/create" className="text-blue-600 hover:text-blue-800">
+                          Créer un agent
+                        </Link>
+                      )}
                     </p>
                   ) : (
                     <select

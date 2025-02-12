@@ -18,15 +18,15 @@ import clsx from 'clsx';
 
 // Add list of users with locked features
 const LOCKED_USERS = [
-  'raphaelvannerom@gmail.com',
-  'rvannerom@zecall.ai',
-  'team.zecall@gmail.com',
+  // 'raphaelvannerom@gmail.com',
+  // 'rvannerom@zecall.ai',
+  // 'team.zecall@gmail.com',
   // 'sachalellouche@gmail.com',
-  'slellouche@zecall.ai',
+  // 'slellouche@zecall.ai',
   'dcambon.spi@gmail.com',
   'contact@ilcaffeditalia.fr',
 //   'david.diouf@hotmail.fr',
-  // 'info.formationcanine@gmail.com',
+  // 'actionenergetique@gmail.com',
   'julien.volkmann@gmail.com'
   // Add more emails as needed
 ];
