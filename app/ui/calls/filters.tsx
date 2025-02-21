@@ -22,6 +22,7 @@ export interface FilterState {
   date: string;
   campaignId: string;
   callStatus: string;
+  direction: string;
 }
 
 export function Filters({ onFilterChange }: FiltersProps) {
@@ -36,6 +37,7 @@ export function Filters({ onFilterChange }: FiltersProps) {
     date: '',
     campaignId: '',
     callStatus: '',
+    direction: '',
   });
 
   useEffect(() => {
@@ -72,6 +74,7 @@ export function Filters({ onFilterChange }: FiltersProps) {
       date: '',
       campaignId: '',
       callStatus: '',
+      direction: '',
     };
     setFilters(resetFilters);
     onFilterChange(resetFilters);
@@ -85,6 +88,11 @@ export function Filters({ onFilterChange }: FiltersProps) {
     'en-cours',
     'sonne',
     'initié'
+  ];
+
+  const directions = [
+    'entrant',
+    'sortant'
   ];
 
   return (
@@ -208,6 +216,24 @@ export function Filters({ onFilterChange }: FiltersProps) {
                 <option value="">Tous les statuts</option>
                 {callStatuses.map((status) => (
                   <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Direction */}
+            <div>
+              <label htmlFor="direction" className="block text-sm font-medium text-gray-700 mb-1">
+                Direction
+              </label>
+              <select
+                id="direction"
+                value={filters.direction}
+                onChange={(e) => handleFilterChange('direction', e.target.value)}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              >
+                <option value="">Toutes les directions</option>
+                {directions.map((direction) => (
+                  <option key={direction} value={direction}>{direction}</option>
                 ))}
               </select>
             </div>

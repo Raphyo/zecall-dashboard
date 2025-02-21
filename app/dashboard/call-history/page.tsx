@@ -121,6 +121,8 @@ function CallHistoryContent() {
         call.campaign_id === filters.campaignId;
       const matchStatus = !filters.callStatus ||
         call.call_status === filters.callStatus;
+      const matchDirection = !filters.direction ||
+        call.direction === filters.direction;
       
       // Date filtering - match calls from the selected date
       const callDate = new Date(call.date);
@@ -135,7 +137,7 @@ function CallHistoryContent() {
       );
       
       return matchCallerNumber && matchCalleeNumber && matchCategory && 
-             matchCampaign && matchDate && matchStatus;
+             matchCampaign && matchDate && matchStatus && matchDirection;
     });
     setFilteredCalls(filtered);
   };
