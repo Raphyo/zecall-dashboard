@@ -19,8 +19,7 @@ export interface FilterState {
   callerNumber: string;
   calleeNumber: string;
   category: string;
-  startDate: string;
-  endDate: string;
+  date: string;
   campaignId: string;
   callStatus: string;
 }
@@ -34,8 +33,7 @@ export function Filters({ onFilterChange }: FiltersProps) {
     callerNumber: '',
     calleeNumber: '',
     category: '',
-    startDate: '',
-    endDate: '',
+    date: '',
     campaignId: '',
     callStatus: '',
   });
@@ -71,8 +69,7 @@ export function Filters({ onFilterChange }: FiltersProps) {
       callerNumber: '',
       calleeNumber: '',
       category: '',
-      startDate: '',
-      endDate: '',
+      date: '',
       campaignId: '',
       callStatus: '',
     };
@@ -215,27 +212,18 @@ export function Filters({ onFilterChange }: FiltersProps) {
               </select>
             </div>
 
-            {/* Date Range */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Période
+            {/* Date Picker */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date
               </label>
-              <div className="flex flex-col gap-2">
-                <input
-                  type="date"
-                  value={filters.startDate}
-                  onChange={(e) => handleFilterChange('startDate', e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                  placeholder="Date début"
-                />
-                <input
-                  type="date"
-                  value={filters.endDate}
-                  onChange={(e) => handleFilterChange('endDate', e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                  placeholder="Date fin"
-                />
-              </div>
+              <input
+                type="date"
+                value={filters.date}
+                onChange={(e) => handleFilterChange('date', e.target.value)}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Sélectionner une date"
+              />
             </div>
           </div>
         </div>
