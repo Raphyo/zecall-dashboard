@@ -19,10 +19,10 @@ export interface FilterState {
   callerNumber: string;
   calleeNumber: string;
   category: string;
-  startDate: string;
-  endDate: string;
+  date: string;
   campaignId: string;
   callStatus: string;
+  direction: string;
 }
 
 export function Filters({ onFilterChange }: FiltersProps) {
@@ -34,10 +34,10 @@ export function Filters({ onFilterChange }: FiltersProps) {
     callerNumber: '',
     calleeNumber: '',
     category: '',
-    startDate: '',
-    endDate: '',
+    date: '',
     campaignId: '',
     callStatus: '',
+    direction: '',
   });
 
   useEffect(() => {
@@ -71,10 +71,10 @@ export function Filters({ onFilterChange }: FiltersProps) {
       callerNumber: '',
       calleeNumber: '',
       category: '',
-      startDate: '',
-      endDate: '',
+      date: '',
       campaignId: '',
       callStatus: '',
+      direction: '',
     };
     setFilters(resetFilters);
     onFilterChange(resetFilters);
@@ -88,6 +88,11 @@ export function Filters({ onFilterChange }: FiltersProps) {
     'en-cours',
     'sonne',
     'initié'
+  ];
+
+  const directions = [
+    'entrant',
+    'sortant'
   ];
 
   return (
@@ -215,27 +220,36 @@ export function Filters({ onFilterChange }: FiltersProps) {
               </select>
             </div>
 
-            {/* Date Range */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Période
+            {/* Direction */}
+            <div>
+              <label htmlFor="direction" className="block text-sm font-medium text-gray-700 mb-1">
+                Direction
               </label>
-              <div className="flex flex-col gap-2">
-                <input
-                  type="date"
-                  value={filters.startDate}
-                  onChange={(e) => handleFilterChange('startDate', e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                  placeholder="Date début"
-                />
-                <input
-                  type="date"
-                  value={filters.endDate}
-                  onChange={(e) => handleFilterChange('endDate', e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                  placeholder="Date fin"
-                />
-              </div>
+              <select
+                id="direction"
+                value={filters.direction}
+                onChange={(e) => handleFilterChange('direction', e.target.value)}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              >
+                <option value="">Toutes les directions</option>
+                {directions.map((direction) => (
+                  <option key={direction} value={direction}>{direction}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Date Picker */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Date
+              </label>
+              <input
+                type="date"
+                value={filters.date}
+                onChange={(e) => handleFilterChange('date', e.target.value)}
+                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Sélectionner une date"
+              />
             </div>
           </div>
         </div>

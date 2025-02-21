@@ -121,17 +121,23 @@ function CallHistoryContent() {
         call.campaign_id === filters.campaignId;
       const matchStatus = !filters.callStatus ||
         call.call_status === filters.callStatus;
+      const matchDirection = !filters.direction ||
+        call.direction === filters.direction;
       
-      // Date filtering
+      // Date filtering - match calls from the selected date
       const callDate = new Date(call.date);
-      const startDate = filters.startDate ? new Date(filters.startDate) : null;
-      const endDate = filters.endDate ? new Date(filters.endDate) : null;
+      const selectedDate = filters.date ? new Date(filters.date) : null;
       
-      const matchDates = (!startDate || callDate >= startDate) && 
-                        (!endDate || callDate <= endDate);
+      // If no date is selected, include all calls
+      // If a date is selected, match calls from that date (ignoring time)
+      const matchDate = !selectedDate || (
+        callDate.getFullYear() === selectedDate.getFullYear() &&
+        callDate.getMonth() === selectedDate.getMonth() &&
+        callDate.getDate() === selectedDate.getDate()
+      );
       
       return matchCallerNumber && matchCalleeNumber && matchCategory && 
-             matchCampaign && matchDates && matchStatus;
+             matchCampaign && matchDate && matchStatus && matchDirection;
     });
     setFilteredCalls(filtered);
   };
