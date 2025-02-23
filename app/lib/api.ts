@@ -316,3 +316,22 @@ export async function updateCampaignStatus(campaignId: string, status: string) {
 
     return response.json();
 }
+
+export async function deleteCall(callId: string, email: string | null | undefined): Promise<void> {
+    try {
+        const userId = getCurrentUserId(email);
+        const response = await fetch(`${API_URL}/api/calls/${callId}?user_id=${userId}`, {
+            method: 'DELETE',
+            headers: {
+                'Accept': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete call');
+        }
+    } catch (error) {
+        console.error('Error deleting call:', error);
+        throw error;
+    }
+}

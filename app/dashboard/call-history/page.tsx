@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getCalls, updateCampaignStatus } from '@/app/lib/api';
-import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { deleteCall, getCalls, updateCampaignStatus } from '@/app/lib/api';
+import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { TEMP_USER_ID } from '@/app/lib/constants';
 import type { Call } from '@/app/ui/calls/types';
 import { AudioPlayer } from '@/app/ui/calls/audio-player';
@@ -191,6 +191,17 @@ function CallHistoryContent() {
     return directionStyles[direction] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20';
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cet appel ?')) return;
+    try {
+      await deleteCall(id, session?.user?.email);
+      loadCalls(); // Refresh the list
+    } catch (err) {
+      console.error('Error deleting call:', err);
+      alert('Erreur lors de la suppression de l\'appel');
+    }
+  };
+
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-8">
@@ -326,6 +337,13 @@ function CallHistoryContent() {
                               <DocumentTextIcon className="h-5 w-5" />
                             </button>
                           )}
+                          <button
+                            onClick={() => handleDelete(call.id)}
+                            className="p-1 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors"
+                            title="Supprimer l'appel"
+                          >
+                            <TrashIcon className="h-5 w-5" />
+                          </button>
                         </div>
                       </td>
                     </tr>
