@@ -63,49 +63,78 @@ function CallHistoryContent() {
     if (!call) return;
 
     try {
-      if (!audioRef.current) {
-        audioRef.current = new Audio();
-        audioRef.current.preload = 'auto';
-        audioRef.current.addEventListener('timeupdate', () => {
-          setCurrentTime(audioRef.current?.currentTime || 0);
-        });
-        audioRef.current.addEventListener('ended', () => {
-          setPlayingId(null);
-        });
+      // Create a new Audio element each time to avoid stale state
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeEventListener('timeupdate', () => {});
+        audioRef.current.removeEventListener('ended', () => {});
       }
+      
+      const audio = new Audio();
+      audio.preload = 'auto';
+      audio.src = url;
+      
+      // Set up event listeners
+      audio.addEventListener('timeupdate', () => {
+        setCurrentTime(audio.currentTime || 0);
+      });
+      audio.addEventListener('ended', () => {
+        setPlayingId(null);
+      });
+      
+      // Update the ref and info before attempting to play
+      audioRef.current = audio;
+      setCurrentAudioInfo({ name, duration: call.duration, url });
 
-      // If clicking the same audio that's currently playing, pause it
-      if (playingId === id && !audioRef.current.paused) {
-        await audioRef.current.pause();
+      // If clicking the same audio that's currently playing, just pause it
+      if (playingId === id) {
         setPlayingId(null);
         return;
       }
 
-      // Set up the new audio source
-      audioRef.current.src = url;
-      setCurrentAudioInfo({ name, duration: call.duration, url });
-      audioRef.current.currentTime = 0;
-      setPlayingId(id); // Set playing ID before attempting to play
+      // Set playing state
+      setPlayingId(id);
 
       try {
-        // Handle the play promise
-        await audioRef.current.play();
+        // Load the audio first
+        await new Promise((resolve, reject) => {
+          audio.addEventListener('canplaythrough', resolve, { once: true });
+          audio.addEventListener('error', reject, { once: true });
+          // Trigger load explicitly
+          audio.load();
+        });
+
+        // Now try to play
+        await audio.play();
       } catch (error: unknown) {
         console.error('Error playing audio:', error);
-        if (error instanceof Error && error.name === 'NotAllowedError') {
-          alert('La lecture audio a été bloquée. Veuillez vérifier les paramètres de lecture automatique de votre appareil.');
+        if (error instanceof Error) {
+          if (error.name === 'NotAllowedError') {
+            alert('La lecture audio a été bloquée. Veuillez vérifier les paramètres de lecture automatique de votre appareil.');
+          } else {
+            alert('Erreur lors de la lecture audio. Veuillez réessayer.');
+          }
         }
-        // Reset state if play fails
+        // Don't reset states here to keep the player visible
         setPlayingId(null);
-        setCurrentAudioInfo({ name: '', duration: 0, url: '' });
       }
     } catch (error: unknown) {
       console.error('Error in audio handling:', error);
-      // Reset state if there's an error
       setPlayingId(null);
-      setCurrentAudioInfo({ name: '', duration: 0, url: '' });
+      // Don't reset currentAudioInfo to keep the player visible
     }
   };
+
+  // Add cleanup effect
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeEventListener('timeupdate', () => {});
+        audioRef.current.removeEventListener('ended', () => {});
+      }
+    };
+  }, []);
 
   const handleViewTranscript = (transcript: string, summary: string) => {
     setSelectedTranscript({ transcript, summary });
