@@ -62,29 +62,65 @@ function CallHistoryContent() {
     const audioElement = document.createElement('audio');
     audioElement.setAttribute('playsinline', ''); // Important for iOS
     audioElement.setAttribute('webkit-playsinline', ''); // For older iOS
-    audioElement.preload = 'auto';
+    audioElement.setAttribute('x-webkit-airplay', 'allow'); // For AirPlay support
+    audioElement.setAttribute('controls', ''); // Add native controls as fallback
+    audioElement.preload = 'metadata'; // Change to metadata for faster initial load
+    audioElement.crossOrigin = 'anonymous'; // Add CORS support
     
-    audioElement.addEventListener('timeupdate', () => {
+    // Create event listener functions that we can remove later
+    const handleTimeUpdate = () => {
       setCurrentTime(audioElement.currentTime || 0);
-    });
+    };
     
-    audioElement.addEventListener('ended', () => {
+    const handleEnded = () => {
       setPlayingId(null);
-    });
-
-    audioElement.addEventListener('error', (e) => {
+    };
+    
+    const handleError = (e: Event) => {
       console.error('Audio error:', e);
-      alert('Erreur lors du chargement de l\'audio. Code: ' + (audioElement.error?.code || 'inconnu'));
-    });
+      const errorMessage = audioElement.error 
+        ? `Code: ${audioElement.error.code}, Message: ${audioElement.error.message}`
+        : 'Unknown error';
+      console.error('Detailed audio error:', errorMessage);
+      alert(`Erreur lors du chargement de l'audio: ${errorMessage}`);
+    };
 
-    audioElement.addEventListener('loadstart', () => console.log('Audio loading started'));
-    audioElement.addEventListener('loadedmetadata', () => console.log('Audio metadata loaded'));
-    audioElement.addEventListener('canplay', () => console.log('Audio can start playing'));
-    audioElement.addEventListener('canplaythrough', () => console.log('Audio can play through'));
+    // Debug event listeners
+    const handleLoadStart = () => console.log('Audio loading started');
+    const handleProgress = () => console.log('Audio download in progress');
+    const handleLoadedData = () => console.log('Audio data loaded');
+    const handleLoadedMetadata = () => console.log('Audio metadata loaded');
+    const handleCanPlay = () => console.log('Audio can start playing');
+    const handleCanPlayThrough = () => console.log('Audio can play through');
+    
+    // Add event listeners
+    audioElement.addEventListener('timeupdate', handleTimeUpdate);
+    audioElement.addEventListener('ended', handleEnded);
+    audioElement.addEventListener('error', handleError);
+    audioElement.addEventListener('loadstart', handleLoadStart);
+    audioElement.addEventListener('progress', handleProgress);
+    audioElement.addEventListener('loadeddata', handleLoadedData);
+    audioElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audioElement.addEventListener('canplay', handleCanPlay);
+    audioElement.addEventListener('canplaythrough', handleCanPlayThrough);
     
     audioElementRef.current = audioElement;
+    document.body.appendChild(audioElement); // Add to DOM for iOS
+    audioElement.style.display = 'none'; // Hide it
     
     return () => {
+      // Remove all event listeners
+      audioElement.removeEventListener('timeupdate', handleTimeUpdate);
+      audioElement.removeEventListener('ended', handleEnded);
+      audioElement.removeEventListener('error', handleError);
+      audioElement.removeEventListener('loadstart', handleLoadStart);
+      audioElement.removeEventListener('progress', handleProgress);
+      audioElement.removeEventListener('loadeddata', handleLoadedData);
+      audioElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audioElement.removeEventListener('canplay', handleCanPlay);
+      audioElement.removeEventListener('canplaythrough', handleCanPlayThrough);
+      
+      // Clean up the audio element
       audioElement.pause();
       audioElement.remove();
     };
@@ -106,24 +142,52 @@ function CallHistoryContent() {
         return;
       }
 
+      // Reset the audio element
+      audio.pause();
+      audio.currentTime = 0;
+      
       // Set up new audio source
       console.log('Setting up new audio source');
-      audio.src = url;
+      
+      // Add timestamp to URL to prevent caching issues
+      const audioUrl = `${url}${url.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+      audio.src = audioUrl;
+      
+      // Load the audio first
+      await new Promise((resolve, reject) => {
+        const loadHandler = () => {
+          audio.removeEventListener('canplaythrough', loadHandler);
+          audio.removeEventListener('error', errorHandler);
+          resolve(null);
+        };
+        const errorHandler = (e: Event) => {
+          audio.removeEventListener('canplaythrough', loadHandler);
+          audio.removeEventListener('error', errorHandler);
+          reject(e);
+        };
+        audio.addEventListener('canplaythrough', loadHandler, { once: true });
+        audio.addEventListener('error', errorHandler, { once: true });
+        audio.load();
+      });
+
       setCurrentAudioInfo({ name, duration: call.duration, url });
       setPlayingId(id);
 
       try {
         console.log('Attempting to play audio');
-        await audio.play();
-        console.log('Audio playing successfully');
+        // Try to play with user interaction
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          await playPromise;
+          console.log('Audio playing successfully');
+        }
       } catch (error: unknown) {
         console.error('Play error:', error);
         if (error instanceof Error) {
-          if (error.name === 'NotAllowedError') {
-            alert('La lecture audio a été bloquée. Veuillez vérifier que votre appareil n\'est pas en mode silencieux et que le volume est activé.');
-          } else {
-            alert(`Erreur lors de la lecture: ${error.message}`);
-          }
+          const errorMessage = error.name === 'NotAllowedError'
+            ? 'La lecture audio nécessite une interaction utilisateur. Veuillez réessayer.'
+            : `Erreur lors de la lecture: ${error.message}`;
+          alert(errorMessage);
         }
         setPlayingId(null);
       }
@@ -402,11 +466,17 @@ function CallHistoryContent() {
           onClose={() => {
             const audio = audioElementRef.current;
             if (audio) {
+              // First pause the audio
               audio.pause();
+              // Remove event listeners to prevent errors
+              audio.removeEventListener('timeupdate', () => {});
+              audio.removeEventListener('ended', () => {});
+              // Reset the audio element without changing src
               audio.currentTime = 0;
-              audio.src = '';
             }
+            // Reset states
             setPlayingId(null);
+            setCurrentTime(0);
             setCurrentAudioInfo({ name: '', duration: 0, url: '' });
           }}
         />
