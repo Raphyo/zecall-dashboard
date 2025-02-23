@@ -57,30 +57,52 @@ function CallHistoryContent() {
     loadCalls();
   }, [session, campaignId]);
 
-  const handlePlayAudio = (url: string, id: string, name: string) => {
+  const handlePlayAudio = async (url: string, id: string, name: string) => {
     // Find the call to get its duration from the database
     const call = calls.find(c => c.id === id);
     if (!call) return;
 
-    if (!audioRef.current) {
-      audioRef.current = new Audio(url);
-      audioRef.current.addEventListener('timeupdate', () => {
-        setCurrentTime(audioRef.current?.currentTime || 0);
-      });
-      audioRef.current.addEventListener('ended', () => {
-        setPlayingId(null);
-      });
-    }
-
-    if (playingId === id && !audioRef.current.paused) {
-      audioRef.current.pause();
-    } else {
-      if (playingId !== id) {
-        audioRef.current.src = url;
-        setCurrentAudioInfo({ name, duration: call.duration, url });
+    try {
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+        // Set these before loading the source
+        audioRef.current.preload = 'auto';
+        audioRef.current.addEventListener('timeupdate', () => {
+          setCurrentTime(audioRef.current?.currentTime || 0);
+        });
+        audioRef.current.addEventListener('ended', () => {
+          setPlayingId(null);
+        });
       }
-      audioRef.current.play();
-      setPlayingId(id);
+
+      if (playingId === id && !audioRef.current.paused) {
+        await audioRef.current.pause();
+        setPlayingId(null);
+      } else {
+        if (playingId !== id) {
+          audioRef.current.src = url;
+          setCurrentAudioInfo({ name, duration: call.duration, url });
+          // Reset the current time when changing tracks
+          audioRef.current.currentTime = 0;
+        }
+        
+        try {
+          // Handle the play promise
+          const playPromise = audioRef.current.play();
+          if (playPromise !== undefined) {
+            await playPromise;
+            setPlayingId(id);
+          }
+        } catch (error: unknown) {
+          console.error('Error playing audio:', error);
+          // Handle autoplay policy error
+          if (error instanceof Error && error.name === 'NotAllowedError') {
+            alert('Audio playback was blocked. Please ensure autoplay is enabled on your device.');
+          }
+        }
+      }
+    } catch (error: unknown) {
+      console.error('Error in audio handling:', error);
     }
   };
 
