@@ -23,7 +23,7 @@ function CallHistoryContent() {
   const [currentAudioInfo, setCurrentAudioInfo] = useState({ name: '', duration: 0, url: '' });
   const [currentTime, setCurrentTime] = useState(0);
   const [playingId, setPlayingId] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const { data: session } = useSession();
 
   const loadCalls = async () => {
@@ -57,84 +57,81 @@ function CallHistoryContent() {
     loadCalls();
   }, [session, campaignId]);
 
+  useEffect(() => {
+    // Create audio element once and reuse it
+    const audioElement = document.createElement('audio');
+    audioElement.setAttribute('playsinline', ''); // Important for iOS
+    audioElement.setAttribute('webkit-playsinline', ''); // For older iOS
+    audioElement.preload = 'auto';
+    
+    audioElement.addEventListener('timeupdate', () => {
+      setCurrentTime(audioElement.currentTime || 0);
+    });
+    
+    audioElement.addEventListener('ended', () => {
+      setPlayingId(null);
+    });
+
+    audioElement.addEventListener('error', (e) => {
+      console.error('Audio error:', e);
+      alert('Erreur lors du chargement de l\'audio. Code: ' + (audioElement.error?.code || 'inconnu'));
+    });
+
+    audioElement.addEventListener('loadstart', () => console.log('Audio loading started'));
+    audioElement.addEventListener('loadedmetadata', () => console.log('Audio metadata loaded'));
+    audioElement.addEventListener('canplay', () => console.log('Audio can start playing'));
+    audioElement.addEventListener('canplaythrough', () => console.log('Audio can play through'));
+    
+    audioElementRef.current = audioElement;
+    
+    return () => {
+      audioElement.pause();
+      audioElement.remove();
+    };
+  }, []);
+
   const handlePlayAudio = async (url: string, id: string, name: string) => {
-    // Find the call to get its duration from the database
+    console.log('handlePlayAudio called with:', { url, id, name });
     const call = calls.find(c => c.id === id);
-    if (!call) return;
+    if (!call || !audioElementRef.current) return;
 
     try {
-      // Create a new Audio element each time to avoid stale state
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.removeEventListener('timeupdate', () => {});
-        audioRef.current.removeEventListener('ended', () => {});
-      }
-      
-      const audio = new Audio();
-      audio.preload = 'auto';
-      audio.src = url;
-      
-      // Set up event listeners
-      audio.addEventListener('timeupdate', () => {
-        setCurrentTime(audio.currentTime || 0);
-      });
-      audio.addEventListener('ended', () => {
-        setPlayingId(null);
-      });
-      
-      // Update the ref and info before attempting to play
-      audioRef.current = audio;
-      setCurrentAudioInfo({ name, duration: call.duration, url });
+      const audio = audioElementRef.current;
 
       // If clicking the same audio that's currently playing, just pause it
       if (playingId === id) {
+        console.log('Pausing current audio');
+        audio.pause();
         setPlayingId(null);
         return;
       }
 
-      // Set playing state
+      // Set up new audio source
+      console.log('Setting up new audio source');
+      audio.src = url;
+      setCurrentAudioInfo({ name, duration: call.duration, url });
       setPlayingId(id);
 
       try {
-        // Load the audio first
-        await new Promise((resolve, reject) => {
-          audio.addEventListener('canplaythrough', resolve, { once: true });
-          audio.addEventListener('error', reject, { once: true });
-          // Trigger load explicitly
-          audio.load();
-        });
-
-        // Now try to play
+        console.log('Attempting to play audio');
         await audio.play();
+        console.log('Audio playing successfully');
       } catch (error: unknown) {
-        console.error('Error playing audio:', error);
+        console.error('Play error:', error);
         if (error instanceof Error) {
           if (error.name === 'NotAllowedError') {
-            alert('La lecture audio a été bloquée. Veuillez vérifier les paramètres de lecture automatique de votre appareil.');
+            alert('La lecture audio a été bloquée. Veuillez vérifier que votre appareil n\'est pas en mode silencieux et que le volume est activé.');
           } else {
-            alert('Erreur lors de la lecture audio. Veuillez réessayer.');
+            alert(`Erreur lors de la lecture: ${error.message}`);
           }
         }
-        // Don't reset states here to keep the player visible
         setPlayingId(null);
       }
     } catch (error: unknown) {
-      console.error('Error in audio handling:', error);
+      console.error('General error:', error);
       setPlayingId(null);
-      // Don't reset currentAudioInfo to keep the player visible
     }
   };
-
-  // Add cleanup effect
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.removeEventListener('timeupdate', () => {});
-        audioRef.current.removeEventListener('ended', () => {});
-      }
-    };
-  }, []);
 
   const handleViewTranscript = (transcript: string, summary: string) => {
     setSelectedTranscript({ transcript, summary });
@@ -394,18 +391,20 @@ function CallHistoryContent() {
         </div>
       )}
 
-      {/* Audio Player - show when there's a current audio, not just when playing */}
+      {/* Audio Player */}
       {(playingId || currentAudioInfo.url) && (
         <AudioPlayer
-          audioRef={audioRef.current}
+          audioRef={audioElementRef.current}
           currentTime={currentTime}
           currentAudioInfo={currentAudioInfo}
           playingId={playingId}
           handlePlayAudio={handlePlayAudio}
           onClose={() => {
-            if (audioRef.current) {
-              audioRef.current.pause();
-              audioRef.current.currentTime = 0;
+            const audio = audioElementRef.current;
+            if (audio) {
+              audio.pause();
+              audio.currentTime = 0;
+              audio.src = '';
             }
             setPlayingId(null);
             setCurrentAudioInfo({ name: '', duration: 0, url: '' });
