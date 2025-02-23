@@ -57,30 +57,79 @@ function CallHistoryContent() {
     loadCalls();
   }, [session, campaignId]);
 
-  const handlePlayAudio = (url: string, id: string, name: string) => {
+  const handlePlayAudio = async (url: string, id: string, name: string) => {
+    console.log('Starting handlePlayAudio with URL:', url);
     // Find the call to get its duration from the database
     const call = calls.find(c => c.id === id);
-    if (!call) return;
-
-    if (!audioRef.current) {
-      audioRef.current = new Audio(url);
-      audioRef.current.addEventListener('timeupdate', () => {
-        setCurrentTime(audioRef.current?.currentTime || 0);
-      });
-      audioRef.current.addEventListener('ended', () => {
-        setPlayingId(null);
-      });
+    if (!call) {
+      console.error('Call not found:', id);
+      return;
     }
 
-    if (playingId === id && !audioRef.current.paused) {
-      audioRef.current.pause();
-    } else {
-      if (playingId !== id) {
-        audioRef.current.src = url;
-        setCurrentAudioInfo({ name, duration: call.duration, url });
+    try {
+      if (!audioRef.current) {
+        console.log('Initializing new Audio object');
+        audioRef.current = new Audio();
+        audioRef.current.addEventListener('timeupdate', () => {
+          setCurrentTime(audioRef.current?.currentTime || 0);
+        });
+        audioRef.current.addEventListener('ended', () => {
+          console.log('Audio playback ended');
+          setPlayingId(null);
+        });
+        audioRef.current.addEventListener('error', (e) => {
+          const target = e.target as HTMLAudioElement;
+          console.error('Audio playback error:', target?.error?.message || 'Unknown error');
+          setPlayingId(null);
+        });
+        audioRef.current.addEventListener('loadstart', () => {
+          console.log('Audio loading started');
+        });
+        audioRef.current.addEventListener('canplay', () => {
+          console.log('Audio can start playing');
+        });
       }
-      audioRef.current.play();
-      setPlayingId(id);
+
+      if (playingId === id && !audioRef.current.paused) {
+        console.log('Pausing current audio');
+        await audioRef.current.pause();
+        setPlayingId(null);
+      } else {
+        if (playingId !== id) {
+          console.log('Setting new audio source');
+          audioRef.current.src = url;
+          setCurrentAudioInfo({ name, duration: call.duration, url });
+        }
+        
+        try {
+          console.log('Loading audio...');
+          await audioRef.current.load();
+          console.log('Audio loaded, attempting to play');
+          const playPromise = audioRef.current.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                console.log('Audio playback started successfully');
+                setPlayingId(id);
+              })
+              .catch((error) => {
+                console.error('Playback failed:', error);
+                setPlayingId(null);
+                // Handle mobile-specific error messages
+                if (error.name === 'NotAllowedError') {
+                  console.log('Autoplay blocked - user interaction required');
+                  alert('Lecture audio bloquée. Veuillez interagir avec la page d\'abord.');
+                }
+              });
+          }
+        } catch (error) {
+          console.error('Audio loading/playing error:', error);
+          setPlayingId(null);
+        }
+      }
+    } catch (error) {
+      console.error('Audio initialization error:', error);
+      setPlayingId(null);
     }
   };
 
