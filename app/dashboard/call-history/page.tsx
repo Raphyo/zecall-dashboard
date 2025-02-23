@@ -65,7 +65,6 @@ function CallHistoryContent() {
     try {
       if (!audioRef.current) {
         audioRef.current = new Audio();
-        // Set these before loading the source
         audioRef.current.preload = 'auto';
         audioRef.current.addEventListener('timeupdate', () => {
           setCurrentTime(audioRef.current?.currentTime || 0);
@@ -75,34 +74,36 @@ function CallHistoryContent() {
         });
       }
 
+      // If clicking the same audio that's currently playing, pause it
       if (playingId === id && !audioRef.current.paused) {
         await audioRef.current.pause();
         setPlayingId(null);
-      } else {
-        if (playingId !== id) {
-          audioRef.current.src = url;
-          setCurrentAudioInfo({ name, duration: call.duration, url });
-          // Reset the current time when changing tracks
-          audioRef.current.currentTime = 0;
+        return;
+      }
+
+      // Set up the new audio source
+      audioRef.current.src = url;
+      setCurrentAudioInfo({ name, duration: call.duration, url });
+      audioRef.current.currentTime = 0;
+      setPlayingId(id); // Set playing ID before attempting to play
+
+      try {
+        // Handle the play promise
+        await audioRef.current.play();
+      } catch (error: unknown) {
+        console.error('Error playing audio:', error);
+        if (error instanceof Error && error.name === 'NotAllowedError') {
+          alert('La lecture audio a été bloquée. Veuillez vérifier les paramètres de lecture automatique de votre appareil.');
         }
-        
-        try {
-          // Handle the play promise
-          const playPromise = audioRef.current.play();
-          if (playPromise !== undefined) {
-            await playPromise;
-            setPlayingId(id);
-          }
-        } catch (error: unknown) {
-          console.error('Error playing audio:', error);
-          // Handle autoplay policy error
-          if (error instanceof Error && error.name === 'NotAllowedError') {
-            alert('Audio playback was blocked. Please ensure autoplay is enabled on your device.');
-          }
-        }
+        // Reset state if play fails
+        setPlayingId(null);
+        setCurrentAudioInfo({ name: '', duration: 0, url: '' });
       }
     } catch (error: unknown) {
       console.error('Error in audio handling:', error);
+      // Reset state if there's an error
+      setPlayingId(null);
+      setCurrentAudioInfo({ name: '', duration: 0, url: '' });
     }
   };
 
@@ -364,7 +365,8 @@ function CallHistoryContent() {
         </div>
       )}
 
-      {playingId && (
+      {/* Audio Player - show when there's a current audio, not just when playing */}
+      {(playingId || currentAudioInfo.url) && (
         <AudioPlayer
           audioRef={audioRef.current}
           currentTime={currentTime}
@@ -372,8 +374,12 @@ function CallHistoryContent() {
           playingId={playingId}
           handlePlayAudio={handlePlayAudio}
           onClose={() => {
-            audioRef.current?.pause();
+            if (audioRef.current) {
+              audioRef.current.pause();
+              audioRef.current.currentTime = 0;
+            }
             setPlayingId(null);
+            setCurrentAudioInfo({ name: '', duration: 0, url: '' });
           }}
         />
       )}
