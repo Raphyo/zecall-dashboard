@@ -11,11 +11,15 @@ import { TranscriptModal } from '@/app/ui/modals/transcript-modal';
 import { Filters, FilterState } from '@/app/ui/calls/filters';
 import { useSession } from 'next-auth/react';
 import { exportCallsToCSV } from '@/app/lib/utils';
+import { Toast } from '@/app/ui/toast';
 
 function CallHistoryContent() {
   const [calls, setCalls] = useState<Call[]>([]);
   const [filteredCalls, setFilteredCalls] = useState<Call[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeletingCalls, setIsDeletingCalls] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [selectedCalls, setSelectedCalls] = useState<string[]>([]);
   const searchParams = useSearchParams();
   const campaignId = searchParams.get('campaign');
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
@@ -191,14 +195,41 @@ function CallHistoryContent() {
     return directionStyles[direction] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20';
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cet appel ?')) return;
+  const handleDelete = async (ids: string[]) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${ids.length > 1 ? 'ces appels' : 'cet appel'} ?`)) return;
+    setIsDeletingCalls(true);
     try {
-      await deleteCall(id, session?.user?.email);
-      loadCalls(); // Refresh the list
+      await deleteCall(ids, session?.user?.email);
+      setSelectedCalls([]);
+      await loadCalls(); // Refresh the list
+      setToast({
+        message: ids.length > 1 ? 'Appels supprimés avec succès' : 'Appel supprimé avec succès',
+        type: 'success'
+      });
     } catch (err) {
-      console.error('Error deleting call:', err);
-      alert('Erreur lors de la suppression de l\'appel');
+      console.error('Error deleting calls:', err);
+      setToast({
+        message: 'Erreur lors de la suppression des appels',
+        type: 'error'
+      });
+    } finally {
+      setIsDeletingCalls(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedCalls(filteredCalls.map(call => call.id));
+    } else {
+      setSelectedCalls([]);
+    }
+  };
+
+  const handleSelectCall = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedCalls(prev => [...prev, id]);
+    } else {
+      setSelectedCalls(prev => prev.filter(callId => callId !== id));
     }
   };
 
@@ -207,6 +238,15 @@ function CallHistoryContent() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Historique des appels</h1>
         <div className="flex items-center gap-4">
+          {selectedCalls.length > 0 && (
+            <button
+              onClick={() => handleDelete(selectedCalls)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700"
+            >
+              <TrashIcon className="w-5 h-5" />
+              Supprimer ({selectedCalls.length})
+            </button>
+          )}
           <button
             onClick={() => exportCallsToCSV(filteredCalls)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
@@ -230,6 +270,14 @@ function CallHistoryContent() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead>
                   <tr className="bg-gray-50">
+                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">
+                      <input
+                        type="checkbox"
+                        checked={selectedCalls.length === filteredCalls.length && filteredCalls.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
                     <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">
                       ID Appel
                     </th>
@@ -271,6 +319,14 @@ function CallHistoryContent() {
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {filteredCalls.map((call) => (
                     <tr key={call.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
+                        <input
+                          type="checkbox"
+                          checked={selectedCalls.includes(call.id)}
+                          onChange={(e) => handleSelectCall(call.id, e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
                       <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
                         {call.id.substring(0, 7)}
                       </td>
@@ -337,13 +393,15 @@ function CallHistoryContent() {
                               <DocumentTextIcon className="h-5 w-5" />
                             </button>
                           )}
-                          <button
-                            onClick={() => handleDelete(call.id)}
-                            className="p-1 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors"
-                            title="Supprimer l'appel"
-                          >
-                            <TrashIcon className="h-5 w-5" />
-                          </button>
+                          {!selectedCalls.length && (
+                            <button
+                              onClick={() => handleDelete([call.id])}
+                              className="p-1 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors"
+                              title="Supprimer l'appel"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -380,6 +438,14 @@ function CallHistoryContent() {
         transcript={selectedTranscript.transcript}
         summary={selectedTranscript.summary}
       />
+      
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }
