@@ -26,6 +26,7 @@ function CallHistoryContent() {
   const [selectedTranscript, setSelectedTranscript] = useState({ transcript: '', summary: '' });
   const [currentAudioInfo, setCurrentAudioInfo] = useState({ name: '', duration: 0, url: '' });
   const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { data: session } = useSession();
@@ -62,29 +63,67 @@ function CallHistoryContent() {
   }, [session, campaignId]);
 
   const handlePlayAudio = (url: string, id: string, name: string) => {
-    // Find the call to get its duration from the database
-    const call = calls.find(c => c.id === id);
-    if (!call) return;
-
     if (!audioRef.current) {
-      audioRef.current = new Audio(url);
+      audioRef.current = new Audio();
+      // Add timeupdate listener for progress tracking
       audioRef.current.addEventListener('timeupdate', () => {
         setCurrentTime(audioRef.current?.currentTime || 0);
       });
-      audioRef.current.addEventListener('ended', () => {
-        setPlayingId(null);
-      });
     }
 
-    if (playingId === id && !audioRef.current.paused) {
-      audioRef.current.pause();
-    } else {
-      if (playingId !== id) {
-        audioRef.current.src = url;
-        setCurrentAudioInfo({ name, duration: call.duration, url });
+    // If clicking the same audio that's currently playing, toggle play/pause
+    if (playingId === id) {
+      if (audioRef.current.paused) {
+        audioRef.current.play()
+          .then(() => {
+            setIsPlaying(true);
+          })
+          .catch((error) => {
+            console.error('Error playing audio:', error);
+            setToast({
+              message: 'Erreur lors de la lecture audio',
+              type: 'error'
+            });
+          });
+      } else {
+        audioRef.current.pause();
+        setIsPlaying(false);
       }
-      audioRef.current.play();
-      setPlayingId(id);
+      return;
+    }
+
+    // If it's a different audio, load and play the new one
+    try {
+      // Find the call to get its duration
+      const call = calls.find(c => c.id === id);
+      if (!call) return;
+
+      audioRef.current.src = url;
+      audioRef.current.play()
+        .then(() => {
+          setPlayingId(id);
+          setIsPlaying(true);
+          setCurrentAudioInfo({ name, duration: call.duration, url });
+        })
+        .catch((error) => {
+          console.error('Error playing audio:', error);
+          setToast({
+            message: 'Erreur lors de la lecture audio',
+            type: 'error'
+          });
+        });
+
+      // Reset playing state when audio ends
+      audioRef.current.onended = () => {
+        setPlayingId(null);
+        setIsPlaying(false);
+      };
+    } catch (error) {
+      console.error('Error setting up audio:', error);
+      setToast({
+        message: 'Erreur lors de la configuration audio',
+        type: 'error'
+      });
     }
   };
 
@@ -233,6 +272,20 @@ function CallHistoryContent() {
     }
   };
 
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+    if (!audioRef.current || !currentAudioInfo.duration) return;
+    
+    const progressBar = e.currentTarget;
+    const rect = progressBar.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const width = rect.width;
+    const percentage = x / width;
+    const newTime = percentage * currentAudioInfo.duration;
+    
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-8">
@@ -378,7 +431,13 @@ function CallHistoryContent() {
                               className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
                               title="Écouter l'enregistrement"
                             >
-                              <PlayCircleIcon className="h-5 w-5" />
+                              {playingId === call.id && isPlaying ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                                  <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" />
+                                </svg>
+                              ) : (
+                                <PlayCircleIcon className="h-5 w-5" />
+                              )}
                             </button>
                           )}
                           {(call.ai_transcript || call.ai_summary) && (
@@ -419,17 +478,67 @@ function CallHistoryContent() {
       )}
 
       {playingId && (
-        <AudioPlayer
-          audioRef={audioRef.current}
-          currentTime={currentTime}
-          currentAudioInfo={currentAudioInfo}
-          playingId={playingId}
-          handlePlayAudio={handlePlayAudio}
-          onClose={() => {
-            audioRef.current?.pause();
-            setPlayingId(null);
-          }}
-        />
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-4 flex-1 max-w-4xl mx-auto">
+            <button
+              onClick={() => {
+                if (audioRef.current) {
+                  if (audioRef.current.paused) {
+                    audioRef.current.play().then(() => setIsPlaying(true));
+                  } else {
+                    audioRef.current.pause();
+                    setIsPlaying(false);
+                  }
+                }
+              }}
+              className="p-2 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
+            >
+              {isPlaying ? (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+                  <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                <PlayCircleIcon className="h-6 w-6" />
+              )}
+            </button>
+            <div className="flex-1">
+              <div className="text-sm text-gray-600 mb-1">{currentAudioInfo.name || 'Audio en cours'}</div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-gray-500">{formatDuration(Math.floor(currentTime))}</div>
+                <div 
+                  className="flex-1 h-1 bg-gray-200 rounded cursor-pointer relative group"
+                  onClick={handleSeek}
+                >
+                  <div 
+                    className="absolute inset-y-0 left-0 bg-blue-600 rounded group-hover:bg-blue-700 transition-colors" 
+                    style={{ 
+                      width: `${currentAudioInfo.duration ? (currentTime / currentAudioInfo.duration) * 100 : 0}%` 
+                    }}
+                  />
+                  <div 
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-blue-600 rounded-full group-hover:bg-blue-700 transition-colors shadow-md"
+                    style={{ 
+                      left: `${currentAudioInfo.duration ? (currentTime / currentAudioInfo.duration) * 100 : 0}%` 
+                    }}
+                  />
+                </div>
+                <div className="text-xs text-gray-500">{formatDuration(currentAudioInfo.duration)}</div>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (audioRef.current) {
+                  audioRef.current.pause();
+                  setPlayingId(null);
+                  setIsPlaying(false);
+                }
+              }}
+              className="p-2 text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
       )}
       
       <TranscriptModal
