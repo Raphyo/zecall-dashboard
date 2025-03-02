@@ -63,67 +63,29 @@ function CallHistoryContent() {
   }, [session, campaignId]);
 
   const handlePlayAudio = (url: string, id: string, name: string) => {
+    // Find the call to get its duration from the database
+    const call = calls.find(c => c.id === id);
+    if (!call) return;
+
     if (!audioRef.current) {
-      audioRef.current = new Audio();
-      // Add timeupdate listener for progress tracking
+      audioRef.current = new Audio(url);
       audioRef.current.addEventListener('timeupdate', () => {
         setCurrentTime(audioRef.current?.currentTime || 0);
       });
-    }
-
-    // If clicking the same audio that's currently playing, toggle play/pause
-    if (playingId === id) {
-      if (audioRef.current.paused) {
-        audioRef.current.play()
-          .then(() => {
-            setIsPlaying(true);
-          })
-          .catch((error) => {
-            console.error('Error playing audio:', error);
-            setToast({
-              message: 'Erreur lors de la lecture audio',
-              type: 'error'
-            });
-          });
-      } else {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      }
-      return;
-    }
-
-    // If it's a different audio, load and play the new one
-    try {
-      // Find the call to get its duration
-      const call = calls.find(c => c.id === id);
-      if (!call) return;
-
-      audioRef.current.src = url;
-      audioRef.current.play()
-        .then(() => {
-          setPlayingId(id);
-          setIsPlaying(true);
-          setCurrentAudioInfo({ name, duration: call.duration, url });
-        })
-        .catch((error) => {
-          console.error('Error playing audio:', error);
-          setToast({
-            message: 'Erreur lors de la lecture audio',
-            type: 'error'
-          });
-        });
-
-      // Reset playing state when audio ends
-      audioRef.current.onended = () => {
+      audioRef.current.addEventListener('ended', () => {
         setPlayingId(null);
-        setIsPlaying(false);
-      };
-    } catch (error) {
-      console.error('Error setting up audio:', error);
-      setToast({
-        message: 'Erreur lors de la configuration audio',
-        type: 'error'
       });
+    }
+
+    if (playingId === id && !audioRef.current.paused) {
+      audioRef.current.pause();
+    } else {
+      if (playingId !== id) {
+        audioRef.current.src = url;
+        setCurrentAudioInfo({ name, duration: call.duration, url });
+      }
+      audioRef.current.play();
+      setPlayingId(id);
     }
   };
 
