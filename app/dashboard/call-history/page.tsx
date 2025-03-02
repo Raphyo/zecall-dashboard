@@ -74,18 +74,31 @@ function CallHistoryContent() {
       });
       audioRef.current.addEventListener('ended', () => {
         setPlayingId(null);
+        setIsPlaying(false);
+      });
+      audioRef.current.addEventListener('play', () => {
+        setIsPlaying(true);
+      });
+      audioRef.current.addEventListener('pause', () => {
+        setIsPlaying(false);
       });
     }
 
     if (playingId === id && !audioRef.current.paused) {
       audioRef.current.pause();
+      setIsPlaying(false);
     } else {
       if (playingId !== id) {
         audioRef.current.src = url;
         setCurrentAudioInfo({ name, duration: call.duration, url });
       }
-      audioRef.current.play();
-      setPlayingId(id);
+      audioRef.current.play().then(() => {
+        setIsPlaying(true);
+        setPlayingId(id);
+      }).catch(error => {
+        console.error('Error playing audio:', error);
+        setIsPlaying(false);
+      });
     }
   };
 
