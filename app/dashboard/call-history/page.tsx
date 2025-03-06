@@ -20,6 +20,15 @@ function CallHistoryContent() {
   const [isDeletingCalls, setIsDeletingCalls] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [selectedCalls, setSelectedCalls] = useState<string[]>([]);
+  const [currentFilters, setCurrentFilters] = useState<FilterState>({
+    callerNumber: '',
+    calleeNumber: '',
+    category: '',
+    date: '',
+    campaignId: '',
+    callStatus: '',
+    direction: '',
+  });
   const searchParams = useSearchParams();
   const campaignId = searchParams.get('campaign');
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
@@ -36,7 +45,38 @@ function CallHistoryContent() {
       setIsLoading(true);
       const fetchedCalls = await getCalls(session?.user?.email, campaignId);
       setCalls(fetchedCalls);
-      setFilteredCalls(fetchedCalls);
+      
+      // Reapply current filters after loading new data
+      const filtered = fetchedCalls.filter(call => {
+        const matchCallerNumber = !currentFilters.callerNumber || 
+          call.caller_number.toLowerCase().includes(currentFilters.callerNumber.toLowerCase());
+        const matchCalleeNumber = !currentFilters.calleeNumber || 
+          call.callee_number.toLowerCase().includes(currentFilters.calleeNumber.toLowerCase());
+        const matchCategory = !currentFilters.category || 
+          call.call_category === currentFilters.category;
+        const matchCampaign = !currentFilters.campaignId ||
+          call.campaign_id === currentFilters.campaignId;
+        const matchStatus = !currentFilters.callStatus ||
+          call.call_status === currentFilters.callStatus;
+        const matchDirection = !currentFilters.direction ||
+          call.direction === currentFilters.direction;
+        
+        // Date filtering - match calls from the selected date
+        const callDate = new Date(call.date);
+        const selectedDate = currentFilters.date ? new Date(currentFilters.date) : null;
+        
+        // If no date is selected, include all calls
+        // If a date is selected, match calls from that date (ignoring time)
+        const matchDate = !selectedDate || (
+          callDate.getFullYear() === selectedDate.getFullYear() &&
+          callDate.getMonth() === selectedDate.getMonth() &&
+          callDate.getDate() === selectedDate.getDate()
+        );
+        
+        return matchCallerNumber && matchCalleeNumber && matchCategory && 
+               matchCampaign && matchDate && matchStatus && matchDirection;
+      });
+      setFilteredCalls(filtered);
 
       if (campaignId && fetchedCalls.length > 0) {
         const allCallsCompleted = fetchedCalls.every(call => 
@@ -128,6 +168,7 @@ function CallHistoryContent() {
   };
 
   const handleFilterChange = (filters: FilterState) => {
+    setCurrentFilters(filters); // Store current filters
     const filtered = calls.filter(call => {
       const matchCallerNumber = !filters.callerNumber || 
         call.caller_number.toLowerCase().includes(filters.callerNumber.toLowerCase());
