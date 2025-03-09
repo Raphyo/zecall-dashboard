@@ -79,6 +79,26 @@ export default function PhoneNumbersPage() {
         throw new Error(errorData?.detail || 'Failed to update agent assignment');
       }
 
+      // Get the phone number that was updated
+      const phoneNumber = phoneNumbers.find(p => p.id === phoneNumberId);
+      if (phoneNumber) {
+        const API_URL = process.env.ORCHESTRATOR_SERVICE_URL || 'http://localhost:5000';
+        // Call the webhook to update the configuration
+        const webhookResponse = await fetch(`${API_URL}/webhook/config-update`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            phone_number: phoneNumber.number 
+          }),
+        });
+
+        if (!webhookResponse.ok) {
+          console.error('Failed to update phone configuration:', await webhookResponse.text());
+        }
+      }
+
       // Refresh phone numbers list
       loadPhoneNumbers();
     } catch (error) {
