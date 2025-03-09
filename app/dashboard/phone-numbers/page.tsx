@@ -5,8 +5,9 @@ import { PhoneIcon } from '@heroicons/react/24/outline';
 import { getPhoneNumbers, getAIAgents, type PhoneNumber, type AIAgent } from '@/app/lib/api';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
-import { API_URL } from '@/app/lib/api';
+import { ANALYTICS_URL, ORCHESTRATOR_URL } from '@/app/lib/api';
 import { getUserIdFromEmail } from '@/app/lib/user-mapping';
+import { Toast } from '@/app/ui/toast';
 
 // Add list of locked users (copied from nav-links.tsx for consistency)
 const LOCKED_USERS = [
@@ -21,6 +22,9 @@ export default function PhoneNumbersPage() {
   const [error, setError] = useState<string | null>(null);
   const [agents, setAgents] = useState<AIAgent[]>([]);
   const [isLoadingAgents, setIsLoadingAgents] = useState(true);
+  const [pendingChanges, setPendingChanges] = useState<{ [key: string]: string }>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const { data: session } = useSession();
 
   const isUserLocked = () => {
@@ -58,52 +62,93 @@ export default function PhoneNumbersPage() {
     loadAIAgents();
   }, [session]);
 
-  const handleAgentAssignment = async (phoneNumberId: string, agentId: string) => {
+  const handleAgentChange = (phoneNumberId: string, agentId: string) => {
+    setPendingChanges(prev => ({
+      ...prev,
+      [phoneNumberId]: agentId
+    }));
+  };
+
+  const handleSaveChanges = async () => {
+    setIsSaving(true);
+    const errors: string[] = [];
+
     try {
       const userId = getUserIdFromEmail(session?.user?.email);
-      const response = await fetch(
-        `${API_URL}/api/phone-numbers/${phoneNumberId}/agent?user_id=${userId}`, 
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            agent_id: agentId === 'none' ? null : agentId
-          }),
-        }
-      );
+      
+      // Process all pending changes
+      for (const [phoneNumberId, agentId] of Object.entries(pendingChanges)) {
+        try {
+          // Update in analytics service
+          const response = await fetch(
+            `${ANALYTICS_URL}/api/phone-numbers/${phoneNumberId}/agent?user_id=${userId}`, 
+            {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ 
+                agent_id: agentId === 'none' ? null : agentId
+              }),
+            }
+          );
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.detail || 'Failed to update agent assignment');
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.detail || 'Failed to update agent assignment');
+          }
+
+          // Update configuration in orchestrator
+          const phoneNumber = phoneNumbers.find(p => p.id === phoneNumberId);
+          if (phoneNumber) {
+            const webhookResponse = await fetch(
+              `${ORCHESTRATOR_URL}/webhook/config-update?phone_number=${encodeURIComponent(phoneNumber.number)}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                }
+              }
+            );
+
+            if (!webhookResponse.ok) {
+              const errorText = await webhookResponse.text();
+              console.error('Failed to update phone configuration:', errorText);
+              errors.push(`Erreur de configuration pour ${phoneNumber.number}: ${errorText}`);
+            }
+          }
+        } catch (error: any) {
+          console.error('Error processing change for phone number:', phoneNumberId, error);
+          const phoneNumber = phoneNumbers.find(p => p.id === phoneNumberId);
+          errors.push(`Erreur pour ${phoneNumber?.number || phoneNumberId}: ${error.message}`);
+        }
       }
 
-      // Get the phone number that was updated
-      const phoneNumber = phoneNumbers.find(p => p.id === phoneNumberId);
-      if (phoneNumber) {
-        const API_URL = process.env.ORCHESTRATOR_SERVICE_URL || 'http://localhost:5000';
-        // Call the webhook to update the configuration
-        const webhookResponse = await fetch(`${API_URL}/webhook/config-update`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            phone_number: phoneNumber.number 
-          }),
+      // Even if there were some errors, we'll refresh the list to show what was updated
+      await loadPhoneNumbers();
+      
+      // Clear successful changes
+      setPendingChanges({});
+      
+      if (errors.length > 0) {
+        setToast({
+          message: `Certaines modifications n'ont pas pu être enregistrées: ${errors.join('. ')}`,
+          type: 'error'
         });
-
-        if (!webhookResponse.ok) {
-          console.error('Failed to update phone configuration:', await webhookResponse.text());
-        }
+      } else {
+        setToast({
+          message: 'Les modifications ont été enregistrées avec succès',
+          type: 'success'
+        });
       }
-
-      // Refresh phone numbers list
-      loadPhoneNumbers();
-    } catch (error) {
-      console.error('Error updating agent assignment:', error);
-      alert('Erreur lors de la mise à jour de l\'agent');
+    } catch (error: any) {
+      console.error('Error in save process:', error);
+      setToast({
+        message: 'Une erreur est survenue lors de l\'enregistrement des modifications',
+        type: 'error'
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -138,6 +183,15 @@ export default function PhoneNumbersPage() {
     <div className="w-full">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Mes numéros</h1>
+        {Object.keys(pendingChanges).length > 0 && (
+          <button
+            onClick={handleSaveChanges}
+            disabled={isSaving}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSaving ? 'Enregistrement...' : 'Enregistrer les modifications'}
+          </button>
+        )}
       </div>
 
       {isLoading ? (
@@ -198,9 +252,11 @@ export default function PhoneNumbersPage() {
                   ) : (
                     <select
                       id={`agent-${number.id}`}
-                      value={number.agent_id || 'none'}
-                      onChange={(e) => handleAgentAssignment(number.id, e.target.value)}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                      value={pendingChanges[number.id] || number.agent_id || 'none'}
+                      onChange={(e) => handleAgentChange(number.id, e.target.value)}
+                      className={`mt-1 block w-full rounded-md border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 ${
+                        pendingChanges[number.id] ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300'
+                      }`}
                     >
                       <option value="none">Aucun agent assigné</option>
                       {agents.map((agent) => (
@@ -222,6 +278,14 @@ export default function PhoneNumbersPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
       )}
     </div>
   );

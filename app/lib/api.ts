@@ -46,7 +46,8 @@ export interface PhoneNumber {
 }
 
 // Add more detailed logging
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002';
+export const ANALYTICS_URL = process.env.NEXT_PUBLIC_ANALYTICS_SERVICE_URL || 'http://localhost:5002';
+export const ORCHESTRATOR_URL = process.env.NEXT_PUBLIC_ORCHESTRATOR_SERVICE_URL || 'http://localhost:5000';
 console.log('Environment:', process.env.NODE_ENV); // This will show 'development' or 'production'
 
 const handleResponse = async (response: Response) => {
@@ -78,7 +79,7 @@ export async function createAIAgent(formData: FormData, email: string | null | u
         }
         formDataWithUser.append('user_id', userId);
 
-        const response = await fetch(`${API_URL}/api/ai-agents`, {
+        const response = await fetch(`${ANALYTICS_URL}/api/ai-agents`, {
             method: 'POST',
             body: formDataWithUser,
             headers: {
@@ -101,7 +102,7 @@ export async function createAIAgent(formData: FormData, email: string | null | u
 export async function getAIAgents(email: string | null | undefined) {
     try {
         const userId = getCurrentUserId(email);
-        const response = await fetch(`${API_URL}/api/ai-agents?user_id=${userId}`, {
+        const response = await fetch(`${ANALYTICS_URL}/api/ai-agents?user_id=${userId}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -121,7 +122,7 @@ export async function getAIAgents(email: string | null | undefined) {
 
 export async function getAIAgent(agentId: string): Promise<AIAgent> {
     try {
-        const response = await fetch(`${API_URL}/api/ai-agents/${agentId}`);
+        const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`);
         return handleResponse(response);
     } catch (error) {
         console.error('Error fetching AI agent:', error);
@@ -131,7 +132,7 @@ export async function getAIAgent(agentId: string): Promise<AIAgent> {
 
 export async function updateAIAgent(agentId: string, agentData: FormData): Promise<AIAgent> {
     try {
-        const response = await fetch(`${API_URL}/api/ai-agents/${agentId}`, {
+        const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`, {
             method: 'PUT',
             body: agentData,
         });
@@ -145,7 +146,7 @@ export async function updateAIAgent(agentId: string, agentData: FormData): Promi
 export async function deleteAIAgent(agentId: string, email: string | null | undefined) {
     try {
         const userId = getCurrentUserId(email);
-        const response = await fetch(`${API_URL}/api/ai-agents/${agentId}?user_id=${userId}`, {
+        const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}?user_id=${userId}`, {
             method: 'DELETE',
             headers: {
                 'Accept': 'application/json',
@@ -167,7 +168,7 @@ export async function deleteAIAgentFile(agentId: string, email: string | null | 
 
     try {
         const response = await fetch(
-            `${API_URL}/api/ai-agents/${agentId}/file?user_id=${userId}`,
+            `${ANALYTICS_URL}/api/ai-agents/${agentId}/file?user_id=${userId}`,
             { method: 'DELETE' }
         );
         if (!response.ok) {
@@ -181,7 +182,7 @@ export async function deleteAIAgentFile(agentId: string, email: string | null | 
 
 export async function createCampaign(formData: FormData): Promise<Campaign> {
     try {
-        const response = await fetch(`${API_URL}/api/campaigns`, {
+        const response = await fetch(`${ANALYTICS_URL}/api/campaigns`, {
             method: 'POST',
             body: formData,
             headers: {
@@ -203,7 +204,7 @@ export async function createCampaign(formData: FormData): Promise<Campaign> {
 export async function getCampaigns(email: string | null | undefined): Promise<Campaign[]> {
     try {
         const userId = getCurrentUserId(email);
-        const response = await fetch(`${API_URL}/api/campaigns?user_id=${userId}&include_status=true`, {
+        const response = await fetch(`${ANALYTICS_URL}/api/campaigns?user_id=${userId}&include_status=true`, {
             headers: {
                 'Accept': 'application/json',
             },
@@ -224,7 +225,7 @@ export async function getPhoneNumbers(email: string | null | undefined): Promise
     try {
         const userId = getCurrentUserId(email);
         console.log('Making API request with user ID:', userId);
-        const response = await fetch(`${API_URL}/api/phone-numbers?user_id=${userId}`, {
+        const response = await fetch(`${ANALYTICS_URL}/api/phone-numbers?user_id=${userId}`, {
             headers: {
                 'Accept': 'application/json',
             },
@@ -247,7 +248,7 @@ export async function getPhoneNumbers(email: string | null | undefined): Promise
 
 export async function deleteCampaign(id: string): Promise<void> {
     try {
-        const response = await fetch(`${API_URL}/api/campaigns/${id}`, {
+        const response = await fetch(`${ANALYTICS_URL}/api/campaigns/${id}`, {
             method: 'DELETE',
             headers: {
                 'Accept': 'application/json',
@@ -265,7 +266,7 @@ export async function deleteCampaign(id: string): Promise<void> {
 
 export async function duplicateCampaign(id: string): Promise<Campaign> {
     try {
-        const response = await fetch(`${API_URL}/api/campaigns/${id}/duplicate`, {
+        const response = await fetch(`${ANALYTICS_URL}/api/campaigns/${id}/duplicate`, {
             method: 'POST',
             headers: {
                 'Accept': 'application/json',
@@ -285,7 +286,7 @@ export async function duplicateCampaign(id: string): Promise<Campaign> {
 export async function getCalls(email: string | null | undefined, campaignId?: string | null): Promise<Call[]> {
     try {
         const userId = getCurrentUserId(email);
-        const url = `${API_URL}/api/calls?${new URLSearchParams({
+        const url = `${ANALYTICS_URL}/api/calls?${new URLSearchParams({
             user_id: userId,
             ...(campaignId ? { campaign_id: campaignId } : {})
         })}`;
@@ -302,7 +303,7 @@ export async function getCalls(email: string | null | undefined, campaignId?: st
 }
 
 export async function updateCampaignStatus(campaignId: string, status: string) {
-    const response = await fetch(`${API_URL}/api/campaigns/${campaignId}/status`, {
+    const response = await fetch(`${ANALYTICS_URL}/api/campaigns/${campaignId}/status`, {
         method: 'PUT',
         headers: {
             'Content-Type': 'application/json',
@@ -320,7 +321,7 @@ export async function updateCampaignStatus(campaignId: string, status: string) {
 export async function deleteCall(callIds: string[], email: string | null | undefined): Promise<void> {
     try {
         const userId = getCurrentUserId(email);
-        const response = await fetch(`${API_URL}/api/calls/bulk-delete?user_id=${userId}`, {
+        const response = await fetch(`${ANALYTICS_URL}/api/calls/bulk-delete?user_id=${userId}`, {
             method: 'DELETE',
             headers: {
                 'Accept': 'application/json',
