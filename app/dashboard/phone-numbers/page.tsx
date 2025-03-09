@@ -83,15 +83,15 @@ export default function PhoneNumbersPage() {
       const phoneNumber = phoneNumbers.find(p => p.id === phoneNumberId);
       if (phoneNumber) {
         // Call the webhook to update the configuration
-        const webhookResponse = await fetch(`${ORCHESTRATOR_URL}/webhook/config-update`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            phone_number: phoneNumber.number 
-          }),
-        });
+        const webhookResponse = await fetch(
+          `${ORCHESTRATOR_URL}/webhook/config-update?phone_number=${encodeURIComponent(phoneNumber.number)}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          }
+        );
 
         if (!webhookResponse.ok) {
           console.error('Failed to update phone configuration:', await webhookResponse.text());
