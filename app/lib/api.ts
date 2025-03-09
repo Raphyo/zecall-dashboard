@@ -316,3 +316,24 @@ export async function updateCampaignStatus(campaignId: string, status: string) {
 
     return response.json();
 }
+
+export async function deleteCall(callIds: string[], email: string | null | undefined): Promise<void> {
+    try {
+        const userId = getCurrentUserId(email);
+        const response = await fetch(`${API_URL}/api/calls/bulk-delete?user_id=${userId}`, {
+            method: 'DELETE',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ call_ids: callIds }),
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete calls');
+        }
+    } catch (error) {
+        console.error('Error deleting calls:', error);
+        throw error;
+    }
+}

@@ -76,7 +76,8 @@ export function exportCallsToCSV(calls: Call[]) {
     'Heure',
     'Durée',
     'Statut',
-    'Campagne'
+    'Campagne',
+    'Catégorie'
   ];
 
   // Convert calls to CSV rows
@@ -90,7 +91,9 @@ export function exportCallsToCSV(calls: Call[]) {
     call.hour,
     call.duration,
     call.call_status,
-    call.campaign_name || '-'
+    call.campaign_name || '-',
+    call.call_category || '-'  // Added this new field
+
   ]);
 
   // Combine headers and rows

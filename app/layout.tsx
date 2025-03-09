@@ -2,6 +2,7 @@ import React from 'react';
 import '@/app/ui/global.css';
 import { inter } from '@/app/ui/fonts';
 import { Providers } from './providers';
+import { Analytics } from "@vercel/analytics/react"
 
 export const metadata = {
   title: 'zecall.ai',
@@ -25,6 +26,7 @@ export default async function RootLayout({
       <body className={`${inter.className} antialiased overscroll-x-auto`}>
         <Providers>
           {children}
+          <Analytics />
         </Providers>
       </body>
     </html>

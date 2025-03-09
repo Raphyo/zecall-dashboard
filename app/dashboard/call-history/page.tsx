@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getCalls, updateCampaignStatus } from '@/app/lib/api';
-import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { deleteCall, getCalls, updateCampaignStatus } from '@/app/lib/api';
+import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { TEMP_USER_ID } from '@/app/lib/constants';
 import type { Call } from '@/app/ui/calls/types';
 import { AudioPlayer } from '@/app/ui/calls/audio-player';
@@ -11,17 +11,31 @@ import { TranscriptModal } from '@/app/ui/modals/transcript-modal';
 import { Filters, FilterState } from '@/app/ui/calls/filters';
 import { useSession } from 'next-auth/react';
 import { exportCallsToCSV } from '@/app/lib/utils';
+import { Toast } from '@/app/ui/toast';
 
 function CallHistoryContent() {
   const [calls, setCalls] = useState<Call[]>([]);
   const [filteredCalls, setFilteredCalls] = useState<Call[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeletingCalls, setIsDeletingCalls] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [selectedCalls, setSelectedCalls] = useState<string[]>([]);
+  const [currentFilters, setCurrentFilters] = useState<FilterState>({
+    callerNumber: '',
+    calleeNumber: '',
+    category: '',
+    date: '',
+    campaignId: '',
+    callStatus: '',
+    direction: '',
+  });
   const searchParams = useSearchParams();
   const campaignId = searchParams.get('campaign');
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
   const [selectedTranscript, setSelectedTranscript] = useState({ transcript: '', summary: '' });
   const [currentAudioInfo, setCurrentAudioInfo] = useState({ name: '', duration: 0, url: '' });
   const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { data: session } = useSession();
@@ -31,7 +45,38 @@ function CallHistoryContent() {
       setIsLoading(true);
       const fetchedCalls = await getCalls(session?.user?.email, campaignId);
       setCalls(fetchedCalls);
-      setFilteredCalls(fetchedCalls);
+      
+      // Reapply current filters after loading new data
+      const filtered = fetchedCalls.filter(call => {
+        const matchCallerNumber = !currentFilters.callerNumber || 
+          call.caller_number.toLowerCase().includes(currentFilters.callerNumber.toLowerCase());
+        const matchCalleeNumber = !currentFilters.calleeNumber || 
+          call.callee_number.toLowerCase().includes(currentFilters.calleeNumber.toLowerCase());
+        const matchCategory = !currentFilters.category || 
+          call.call_category === currentFilters.category;
+        const matchCampaign = !currentFilters.campaignId ||
+          call.campaign_id === currentFilters.campaignId;
+        const matchStatus = !currentFilters.callStatus ||
+          call.call_status === currentFilters.callStatus;
+        const matchDirection = !currentFilters.direction ||
+          call.direction === currentFilters.direction;
+        
+        // Date filtering - match calls from the selected date
+        const callDate = new Date(call.date);
+        const selectedDate = currentFilters.date ? new Date(currentFilters.date) : null;
+        
+        // If no date is selected, include all calls
+        // If a date is selected, match calls from that date (ignoring time)
+        const matchDate = !selectedDate || (
+          callDate.getFullYear() === selectedDate.getFullYear() &&
+          callDate.getMonth() === selectedDate.getMonth() &&
+          callDate.getDate() === selectedDate.getDate()
+        );
+        
+        return matchCallerNumber && matchCalleeNumber && matchCategory && 
+               matchCampaign && matchDate && matchStatus && matchDirection;
+      });
+      setFilteredCalls(filtered);
 
       if (campaignId && fetchedCalls.length > 0) {
         const allCallsCompleted = fetchedCalls.every(call => 
@@ -69,18 +114,31 @@ function CallHistoryContent() {
       });
       audioRef.current.addEventListener('ended', () => {
         setPlayingId(null);
+        setIsPlaying(false);
+      });
+      audioRef.current.addEventListener('play', () => {
+        setIsPlaying(true);
+      });
+      audioRef.current.addEventListener('pause', () => {
+        setIsPlaying(false);
       });
     }
 
     if (playingId === id && !audioRef.current.paused) {
       audioRef.current.pause();
+      setIsPlaying(false);
     } else {
       if (playingId !== id) {
         audioRef.current.src = url;
         setCurrentAudioInfo({ name, duration: call.duration, url });
       }
-      audioRef.current.play();
-      setPlayingId(id);
+      audioRef.current.play().then(() => {
+        setIsPlaying(true);
+        setPlayingId(id);
+      }).catch(error => {
+        console.error('Error playing audio:', error);
+        setIsPlaying(false);
+      });
     }
   };
 
@@ -110,6 +168,7 @@ function CallHistoryContent() {
   };
 
   const handleFilterChange = (filters: FilterState) => {
+    setCurrentFilters(filters); // Store current filters
     const filtered = calls.filter(call => {
       const matchCallerNumber = !filters.callerNumber || 
         call.caller_number.toLowerCase().includes(filters.callerNumber.toLowerCase());
@@ -191,11 +250,72 @@ function CallHistoryContent() {
     return directionStyles[direction] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20';
   };
 
+  const handleDelete = async (ids: string[]) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${ids.length > 1 ? 'ces appels' : 'cet appel'} ?`)) return;
+    setIsDeletingCalls(true);
+    try {
+      await deleteCall(ids, session?.user?.email);
+      setSelectedCalls([]);
+      await loadCalls(); // Refresh the list
+      setToast({
+        message: ids.length > 1 ? 'Appels supprimés avec succès' : 'Appel supprimé avec succès',
+        type: 'success'
+      });
+    } catch (err) {
+      console.error('Error deleting calls:', err);
+      setToast({
+        message: 'Erreur lors de la suppression des appels',
+        type: 'error'
+      });
+    } finally {
+      setIsDeletingCalls(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedCalls(filteredCalls.map(call => call.id));
+    } else {
+      setSelectedCalls([]);
+    }
+  };
+
+  const handleSelectCall = (id: string, checked: boolean) => {
+    if (checked) {
+      setSelectedCalls(prev => [...prev, id]);
+    } else {
+      setSelectedCalls(prev => prev.filter(callId => callId !== id));
+    }
+  };
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+    if (!audioRef.current || !currentAudioInfo.duration) return;
+    
+    const progressBar = e.currentTarget;
+    const rect = progressBar.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const width = rect.width;
+    const percentage = x / width;
+    const newTime = percentage * currentAudioInfo.duration;
+    
+    audioRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Historique des appels</h1>
         <div className="flex items-center gap-4">
+          {selectedCalls.length > 0 && (
+            <button
+              onClick={() => handleDelete(selectedCalls)}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700"
+            >
+              <TrashIcon className="w-5 h-5" />
+              Supprimer ({selectedCalls.length})
+            </button>
+          )}
           <button
             onClick={() => exportCallsToCSV(filteredCalls)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
@@ -219,6 +339,14 @@ function CallHistoryContent() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead>
                   <tr className="bg-gray-50">
+                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">
+                      <input
+                        type="checkbox"
+                        checked={selectedCalls.length === filteredCalls.length && filteredCalls.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
                     <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">
                       ID Appel
                     </th>
@@ -260,6 +388,14 @@ function CallHistoryContent() {
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {filteredCalls.map((call) => (
                     <tr key={call.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
+                        <input
+                          type="checkbox"
+                          checked={selectedCalls.includes(call.id)}
+                          onChange={(e) => handleSelectCall(call.id, e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
                       <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
                         {call.id.substring(0, 7)}
                       </td>
@@ -311,7 +447,13 @@ function CallHistoryContent() {
                               className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
                               title="Écouter l'enregistrement"
                             >
-                              <PlayCircleIcon className="h-5 w-5" />
+                              {playingId === call.id && isPlaying ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                                  <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" />
+                                </svg>
+                              ) : (
+                                <PlayCircleIcon className="h-5 w-5" />
+                              )}
                             </button>
                           )}
                           {(call.ai_transcript || call.ai_summary) && (
@@ -324,6 +466,15 @@ function CallHistoryContent() {
                               title="Voir la transcription"
                             >
                               <DocumentTextIcon className="h-5 w-5" />
+                            </button>
+                          )}
+                          {!selectedCalls.length && (
+                            <button
+                              onClick={() => handleDelete([call.id])}
+                              className="p-1 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors"
+                              title="Supprimer l'appel"
+                            >
+                              <TrashIcon className="h-5 w-5" />
                             </button>
                           )}
                         </div>
@@ -343,17 +494,67 @@ function CallHistoryContent() {
       )}
 
       {playingId && (
-        <AudioPlayer
-          audioRef={audioRef.current}
-          currentTime={currentTime}
-          currentAudioInfo={currentAudioInfo}
-          playingId={playingId}
-          handlePlayAudio={handlePlayAudio}
-          onClose={() => {
-            audioRef.current?.pause();
-            setPlayingId(null);
-          }}
-        />
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 flex items-center justify-between shadow-lg">
+          <div className="flex items-center gap-4 flex-1 max-w-4xl mx-auto">
+            <button
+              onClick={() => {
+                if (audioRef.current) {
+                  if (audioRef.current.paused) {
+                    audioRef.current.play().then(() => setIsPlaying(true));
+                  } else {
+                    audioRef.current.pause();
+                    setIsPlaying(false);
+                  }
+                }
+              }}
+              className="p-2 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
+            >
+              {isPlaying ? (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+                  <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                <PlayCircleIcon className="h-6 w-6" />
+              )}
+            </button>
+            <div className="flex-1">
+              <div className="text-sm text-gray-600 mb-1">{currentAudioInfo.name || 'Audio en cours'}</div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs text-gray-500">{formatDuration(Math.floor(currentTime))}</div>
+                <div 
+                  className="flex-1 h-1 bg-gray-200 rounded cursor-pointer relative group"
+                  onClick={handleSeek}
+                >
+                  <div 
+                    className="absolute inset-y-0 left-0 bg-blue-600 rounded group-hover:bg-blue-700 transition-colors" 
+                    style={{ 
+                      width: `${currentAudioInfo.duration ? (currentTime / currentAudioInfo.duration) * 100 : 0}%` 
+                    }}
+                  />
+                  <div 
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-blue-600 rounded-full group-hover:bg-blue-700 transition-colors shadow-md"
+                    style={{ 
+                      left: `${currentAudioInfo.duration ? (currentTime / currentAudioInfo.duration) * 100 : 0}%` 
+                    }}
+                  />
+                </div>
+                <div className="text-xs text-gray-500">{formatDuration(currentAudioInfo.duration)}</div>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (audioRef.current) {
+                  audioRef.current.pause();
+                  setPlayingId(null);
+                  setIsPlaying(false);
+                }
+              }}
+              className="p-2 text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
       )}
       
       <TranscriptModal
@@ -362,6 +563,14 @@ function CallHistoryContent() {
         transcript={selectedTranscript.transcript}
         summary={selectedTranscript.summary}
       />
+      
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }
