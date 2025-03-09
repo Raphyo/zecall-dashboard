@@ -47,6 +47,7 @@ export interface PhoneNumber {
 
 // Add more detailed logging
 export const API_URL = process.env.ANALYTICS_SERVICE_URL || 'http://localhost:5002';
+console.log('ANALYTICS URL:', process.env.ANALYTICS_SERVICE_URL); // This will show 'development' or 'production'
 console.log('Environment:', process.env.NODE_ENV); // This will show 'development' or 'production'
 
 const handleResponse = async (response: Response) => {
