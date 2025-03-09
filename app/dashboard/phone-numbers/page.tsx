@@ -5,7 +5,7 @@ import { PhoneIcon } from '@heroicons/react/24/outline';
 import { getPhoneNumbers, getAIAgents, type PhoneNumber, type AIAgent } from '@/app/lib/api';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
-import { NEXT_PUBLIC_ANALYTICS_SERVICE_URL, NEXT_PUBLIC_ORCHESTRATOR_SERVICE_URL } from '@/app/lib/api';
+import { ANALYTICS_URL, ORCHESTRATOR_URL } from '@/app/lib/api';
 import { getUserIdFromEmail } from '@/app/lib/user-mapping';
 
 // Add list of locked users (copied from nav-links.tsx for consistency)

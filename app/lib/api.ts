@@ -46,7 +46,7 @@ export interface PhoneNumber {
 }
 
 // Add more detailed logging
-export const API_URL = process.env.NEXT_PUBLIC_ANALYTICS_SERVICE_URL || 'http://localhost:5002';
+export const ANALYTICS_URL = process.env.NEXT_PUBLIC_ANALYTICS_SERVICE_URL || 'http://localhost:5002';
 export const ORCHESTRATOR_URL = process.env.NEXT_PUBLIC_ORCHESTRATOR_SERVICE_URL || 'http://localhost:5000';
 console.log('Environment:', process.env.NODE_ENV); // This will show 'development' or 'production'
 
