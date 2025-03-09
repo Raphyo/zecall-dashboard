@@ -5,7 +5,7 @@ import { PhoneIcon } from '@heroicons/react/24/outline';
 import { getPhoneNumbers, getAIAgents, type PhoneNumber, type AIAgent } from '@/app/lib/api';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
-import { API_URL } from '@/app/lib/api';
+import { ANALYTICS_URL, ORCHESTRATOR_URL } from '@/app/lib/api';
 import { getUserIdFromEmail } from '@/app/lib/user-mapping';
 
 // Add list of locked users (copied from nav-links.tsx for consistency)
@@ -62,7 +62,7 @@ export default function PhoneNumbersPage() {
     try {
       const userId = getUserIdFromEmail(session?.user?.email);
       const response = await fetch(
-        `${API_URL}/api/phone-numbers/${phoneNumberId}/agent?user_id=${userId}`, 
+        `${ANALYTICS_URL}/api/phone-numbers/${phoneNumberId}/agent?user_id=${userId}`, 
         {
           method: 'PUT',
           headers: {
@@ -82,9 +82,8 @@ export default function PhoneNumbersPage() {
       // Get the phone number that was updated
       const phoneNumber = phoneNumbers.find(p => p.id === phoneNumberId);
       if (phoneNumber) {
-        const API_URL = process.env.ORCHESTRATOR_SERVICE_URL || 'http://localhost:5000';
         // Call the webhook to update the configuration
-        const webhookResponse = await fetch(`${API_URL}/webhook/config-update`, {
+        const webhookResponse = await fetch(`${ORCHESTRATOR_URL}/webhook/config-update`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
