@@ -71,61 +71,78 @@ export default function PhoneNumbersPage() {
 
   const handleSaveChanges = async () => {
     setIsSaving(true);
+    const errors: string[] = [];
+
     try {
       const userId = getUserIdFromEmail(session?.user?.email);
       
       // Process all pending changes
       for (const [phoneNumberId, agentId] of Object.entries(pendingChanges)) {
-        // Update in analytics service
-        const response = await fetch(
-          `${ANALYTICS_URL}/api/phone-numbers/${phoneNumberId}/agent?user_id=${userId}`, 
-          {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ 
-              agent_id: agentId === 'none' ? null : agentId
-            }),
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => null);
-          throw new Error(errorData?.detail || 'Failed to update agent assignment');
-        }
-
-        // Update configuration in orchestrator
-        const phoneNumber = phoneNumbers.find(p => p.id === phoneNumberId);
-        if (phoneNumber) {
-          const webhookResponse = await fetch(
-            `${ORCHESTRATOR_URL}/webhook/config-update?phone_number=${encodeURIComponent(phoneNumber.number)}`,
+        try {
+          // Update in analytics service
+          const response = await fetch(
+            `${ANALYTICS_URL}/api/phone-numbers/${phoneNumberId}/agent?user_id=${userId}`, 
             {
-              method: 'POST',
+              method: 'PUT',
               headers: {
                 'Content-Type': 'application/json',
-              }
+              },
+              body: JSON.stringify({ 
+                agent_id: agentId === 'none' ? null : agentId
+              }),
             }
           );
 
-          if (!webhookResponse.ok) {
-            console.error('Failed to update phone configuration:', await webhookResponse.text());
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.detail || 'Failed to update agent assignment');
           }
+
+          // Update configuration in orchestrator
+          const phoneNumber = phoneNumbers.find(p => p.id === phoneNumberId);
+          if (phoneNumber) {
+            const webhookResponse = await fetch(
+              `${ORCHESTRATOR_URL}/webhook/config-update?phone_number=${encodeURIComponent(phoneNumber.number)}`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                }
+              }
+            );
+
+            if (!webhookResponse.ok) {
+              const errorText = await webhookResponse.text();
+              console.error('Failed to update phone configuration:', errorText);
+              errors.push(`Erreur de configuration pour ${phoneNumber.number}: ${errorText}`);
+            }
+          }
+        } catch (error: any) {
+          console.error('Error processing change for phone number:', phoneNumberId, error);
+          const phoneNumber = phoneNumbers.find(p => p.id === phoneNumberId);
+          errors.push(`Erreur pour ${phoneNumber?.number || phoneNumberId}: ${error.message}`);
         }
       }
 
-      // Clear pending changes after successful save
-      setPendingChanges({});
-      
-      // Refresh phone numbers list
+      // Even if there were some errors, we'll refresh the list to show what was updated
       await loadPhoneNumbers();
       
-      setToast({
-        message: 'Les modifications ont été enregistrées avec succès',
-        type: 'success'
-      });
-    } catch (error) {
-      console.error('Error saving changes:', error);
+      // Clear successful changes
+      setPendingChanges({});
+      
+      if (errors.length > 0) {
+        setToast({
+          message: `Certaines modifications n'ont pas pu être enregistrées: ${errors.join('. ')}`,
+          type: 'error'
+        });
+      } else {
+        setToast({
+          message: 'Les modifications ont été enregistrées avec succès',
+          type: 'success'
+        });
+      }
+    } catch (error: any) {
+      console.error('Error in save process:', error);
       setToast({
         message: 'Une erreur est survenue lors de l\'enregistrement des modifications',
         type: 'error'
