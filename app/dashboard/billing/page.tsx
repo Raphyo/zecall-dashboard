@@ -19,15 +19,19 @@ export default function BillingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [isLoadingPaymentMethods, setIsLoadingPaymentMethods] = useState(true);
-
-  const invoices = [
-    { id: 1, date: '2024-03-01', amount: '250.00', status: 'Payée' },
-    { id: 2, date: '2024-02-01', amount: '250.00', status: 'Payée' },
-    { id: 3, date: '2024-01-01', amount: '250.00', status: 'Payée' },
-  ];
+  const [payments, setPayments] = useState<Array<{
+    id: string;
+    date: number;
+    amount: number;
+    status: string;
+    description: string;
+    receipt_url: string | null;
+  }>>([]);
+  const [isLoadingPayments, setIsLoadingPayments] = useState(true);
 
   useEffect(() => {
     fetchPaymentMethods();
+    fetchPaymentHistory();
   }, []);
 
   useEffect(() => {
@@ -41,6 +45,25 @@ export default function BillingPage() {
       router.replace('/dashboard/billing');
     }
   }, [router]);
+
+  const fetchPaymentHistory = async () => {
+    try {
+      setIsLoadingPayments(true);
+      const response = await fetch('/api/stripe/invoices');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch payment history');
+      }
+
+      setPayments(data.payments);
+    } catch (error) {
+      console.error('Error fetching payment history:', error);
+      toast.error('Unable to load payment history');
+    } finally {
+      setIsLoadingPayments(false);
+    }
+  };
 
   const fetchPaymentMethods = async () => {
     try {
@@ -87,16 +110,30 @@ export default function BillingPage() {
     }
   };
 
-  const getCardIcon = (brand: string) => {
-    // You can replace these with actual card brand SVGs
-    const brandToIcon: { [key: string]: string } = {
-      visa: '/visa.svg',
-      mastercard: '/mastercard.svg',
-      amex: '/amex.svg',
-      // Add more card brands as needed
-    };
+  const getPaymentStatusStyle = (status: string) => {
+    switch (status) {
+      case 'succeeded':
+        return 'bg-green-100 text-green-800';
+      case 'processing':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'requires_payment_method':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
 
-    return brandToIcon[brand.toLowerCase()] || '/generic-card.svg';
+  const getPaymentStatusLabel = (status: string) => {
+    switch (status) {
+      case 'succeeded':
+        return 'Payé';
+      case 'processing':
+        return 'En cours';
+      case 'requires_payment_method':
+        return 'Échoué';
+      default:
+        return status;
+    }
   };
 
   return (
@@ -179,52 +216,84 @@ export default function BillingPage() {
           )}
         </div>
 
-        {/* Billing History */}
+        {/* Payment History */}
         <div className="p-6">
           <div className="flex items-center mb-6">
             <ReceiptRefundIcon className="h-6 w-6 text-gray-600 mr-2" />
-            <h2 className="text-lg font-medium">Historique des factures</h2>
+            <h2 className="text-lg font-medium">Historique des paiements</h2>
           </div>
           
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Montant
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Statut
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Facture
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {invoices.map((invoice) => (
-                  <tr key={invoice.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(invoice.date).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {invoice.amount}€
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                        {invoice.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800">
-                      <button>Télécharger</button>
-                    </td>
+            {isLoadingPayments ? (
+              <div className="text-center py-6">
+                <svg className="animate-spin h-8 w-8 mx-auto text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+            ) : payments.length > 0 ? (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Description
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Montant
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Statut
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Reçu
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {payments.map((payment) => (
+                    <tr key={payment.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(payment.date).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {payment.description}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {payment.amount.toFixed(2)}€
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPaymentStatusStyle(payment.status)}`}>
+                          {getPaymentStatusLabel(payment.status)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {payment.receipt_url ? (
+                          <a
+                            href={payment.receipt_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            Télécharger
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">Non disponible</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="text-center py-6 px-4 border rounded-lg border-dashed border-gray-300">
+                <p className="text-sm text-gray-500">
+                  Aucun paiement disponible
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
