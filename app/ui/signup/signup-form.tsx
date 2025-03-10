@@ -1,6 +1,4 @@
 'use client';
-import PhoneInput from 'react-phone-number-input';
-import 'react-phone-number-input/style.css';
 import { useState, useEffect } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 import { register } from '@/app/lib/actions';
@@ -21,7 +19,6 @@ export default function SignUpForm() {
   const router = useRouter();
   const initialState = { message: '', success: false };
   const [state, formAction] = useFormState(register, initialState);
-  const [phoneNumber, setPhoneNumber] = useState<string>();
 
   useEffect(() => {
     if (state?.success) {
@@ -73,28 +70,6 @@ export default function SignUpForm() {
               placeholder="Enter your email address"
               required
             />
-          </div>
-
-          {/* Phone Number field */}
-          <div>
-            <label
-              className="mb-3 mt-5 block text-xs font-medium text-gray-900"
-              htmlFor="phoneNumber"
-            >
-              Phone Number
-            </label>
-            <div className="phone-input-container">
-              <PhoneInput
-                international
-                countryCallingCodeEditable={false}
-                defaultCountry="US"
-                value={phoneNumber}
-                onChange={setPhoneNumber}
-                name="phoneNumber"
-                id="phoneNumber"
-                required
-              />
-            </div>
           </div>
 
           {/* Password field */}

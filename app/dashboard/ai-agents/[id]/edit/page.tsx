@@ -1,11 +1,25 @@
 import { Metadata } from 'next';
+import { EditAIAgentForm } from '@/app/ui/ai-agents/edit-form';
 
 export const metadata: Metadata = {
-  title: 'Edit AI Agent',
+  title: 'Modifier l\'agent IA',
 };
 
-export default async function EditAIAgentPage() {
-  return null; // Temporarily return null to make build pass
+interface Props {
+  params: Promise<{ id: string }>;
+}
+
+export default async function EditAIAgentPage({ params }: Props) {
+  const { id } = await params;
+  
+  return (
+    <div className="w-full">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold">Modifier l'agent IA</h1>
+      </div>
+      <EditAIAgentForm agentId={id} />
+    </div>
+  );
 }
 
 // Comment out the entire client component temporarily

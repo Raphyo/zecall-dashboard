@@ -130,13 +130,31 @@ export async function getAIAgent(agentId: string): Promise<AIAgent> {
     }
 }
 
-export async function updateAIAgent(agentId: string, agentData: FormData): Promise<AIAgent> {
+export async function updateAIAgent(agentId: string, agentData: FormData, email: string | null | undefined): Promise<AIAgent> {
     try {
+        const userId = getCurrentUserId(email);
+        
+        const formDataWithUser = new FormData();
+        for (const [key, value] of agentData.entries()) {
+            formDataWithUser.append(key, value);
+        }
+        if (!formDataWithUser.has('userId')) {
+            formDataWithUser.append('userId', userId);
+        }
+
         const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`, {
             method: 'PUT',
-            body: agentData,
+            body: formDataWithUser,
+            headers: {
+                'Accept': 'application/json',
+            }
         });
-        return handleResponse(response);
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.detail || `Failed to update agent: ${response.statusText}`);
+        }
+        return response.json();
     } catch (error) {
         console.error('Error updating AI agent:', error);
         throw error;
@@ -224,22 +242,16 @@ export async function getCampaigns(email: string | null | undefined): Promise<Ca
 export async function getPhoneNumbers(email: string | null | undefined): Promise<PhoneNumber[]> {
     try {
         const userId = getCurrentUserId(email);
-        console.log('Making API request with user ID:', userId);
         const response = await fetch(`${ANALYTICS_URL}/api/phone-numbers?user_id=${userId}`, {
             headers: {
                 'Accept': 'application/json',
             },
         });
-  
-        console.log('API Response status:', response.status);
+
         if (!response.ok) {
-            const errorText = await response.text();
-            console.error('API Error response:', errorText);
             throw new Error('Failed to fetch phone numbers');
         }
-        const data = await response.json();
-        console.log('Phone numbers received:', data);
-        return data;
+        return response.json();
     } catch (error) {
         console.error('Error fetching phone numbers:', error);
         throw error;

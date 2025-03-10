@@ -44,9 +44,8 @@ export async function register(
     const name = formData.get('name') as string;
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
-    const phoneNumber = formData.get('phoneNumber') as string;
 
-    if (!name || !email || !password || !phoneNumber) {
+    if (!name || !email || !password) {
       return {
         message: 'Missing required fields',
         success: false,
@@ -67,8 +66,8 @@ export async function register(
     const hashedPassword = await bcrypt.hash(password, 10);
 
     await sql`
-      INSERT INTO users (name, email, password, phone_number)
-      VALUES (${name}, ${email}, ${hashedPassword}, ${phoneNumber})
+      INSERT INTO users (name, email, password)
+      VALUES (${name}, ${email}, ${hashedPassword})
     `;
 
     revalidatePath('/login');
