@@ -4,20 +4,19 @@ import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { deleteCall, getCalls, updateCampaignStatus } from '@/app/lib/api';
 import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { TEMP_USER_ID } from '@/app/lib/constants';
 import type { Call } from '@/app/ui/calls/types';
-import { AudioPlayer } from '@/app/ui/calls/audio-player';
 import { TranscriptModal } from '@/app/ui/modals/transcript-modal';
 import { Filters, FilterState } from '@/app/ui/calls/filters';
 import { useSession } from 'next-auth/react';
-import { exportCallsToCSV } from '@/app/lib/utils';
+import { exportCallsToCSV, calculateCallCost } from '@/app/lib/utils';
 import { Toast } from '@/app/ui/toast';
+import { CALL_COST_PER_MINUTE } from '@/app/lib/constants';
 
 function CallHistoryContent() {
   const [calls, setCalls] = useState<Call[]>([]);
   const [filteredCalls, setFilteredCalls] = useState<Call[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDeletingCalls, setIsDeletingCalls] = useState(false);
+  const [setIsDeletingCalls] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [selectedCalls, setSelectedCalls] = useState<string[]>([]);
   const [currentFilters, setCurrentFilters] = useState<FilterState>({
@@ -375,6 +374,9 @@ function CallHistoryContent() {
                       Durée
                     </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                      Coût
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
                       Statut
                     </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
@@ -426,6 +428,9 @@ function CallHistoryContent() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {formatDuration(call.duration)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        {calculateCallCost(call.duration)}€
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
                         <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getStatusStyle(call.call_status)}`}>

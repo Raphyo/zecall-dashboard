@@ -9,6 +9,10 @@ import { useState, useEffect } from 'react';
 import { CurrencyEuroIcon } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 
+// Create a custom event for credit updates
+export const creditUpdateEvent = new EventTarget();
+export const CREDIT_UPDATE_EVENT = 'creditUpdate';
+
 export default function SideNav() {
   const { data: session } = useSession();
   const [credits, setCredits] = useState(0);
@@ -17,6 +21,29 @@ export default function SideNav() {
 
   useEffect(() => {
     fetchCredits();
+
+    // Subscribe to credit update events with detailed information
+    const handleCreditUpdate = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail?.remainingCredits !== undefined) {
+        // Directly update credits from the webhook data
+        setCredits(customEvent.detail.remainingCredits);
+        
+        // Show a toast notification for the completed call
+        toast.success(
+          `Appel terminé - ${customEvent.detail.billedMinutes} minute${customEvent.detail.billedMinutes > 1 ? 's' : ''} facturée${customEvent.detail.billedMinutes > 1 ? 's' : ''}`
+        );
+      } else {
+        // Fallback to fetching credits
+        fetchCredits();
+      }
+    };
+
+    creditUpdateEvent.addEventListener(CREDIT_UPDATE_EVENT, handleCreditUpdate);
+
+    return () => {
+      creditUpdateEvent.removeEventListener(CREDIT_UPDATE_EVENT, handleCreditUpdate);
+    };
   }, []);
 
   const fetchCredits = async () => {

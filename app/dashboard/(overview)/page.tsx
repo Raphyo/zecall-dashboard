@@ -13,6 +13,7 @@ import { inter } from '@/app/ui/fonts';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale/fr';
 import { Call } from '@/app/ui/calls/types';
+import { calculateCallCost } from '@/app/lib/utils';
 
 function SkeletonCard() {
   return (
@@ -351,7 +352,10 @@ export default function DashboardPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="text-sm text-gray-500">{formatDuration(call.duration)}</div>
+                  <div className="text-right">
+                    <div className="text-sm text-gray-500">{formatDuration(call.duration)}</div>
+                    <div className="text-sm font-medium text-gray-900">{calculateCallCost(call.duration)}€</div>
+                  </div>
                 </div>
               ))}
               {recentCalls.length === 0 && (
