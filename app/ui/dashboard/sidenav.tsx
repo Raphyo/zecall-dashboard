@@ -20,30 +20,13 @@ export default function SideNav() {
   const [rechargeAmount, setRechargeAmount] = useState<string>('15');
 
   useEffect(() => {
-    fetchCredits();
+    fetchCredits(); // Initial fetch
 
-    // Subscribe to credit update events with detailed information
-    const handleCreditUpdate = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      if (customEvent.detail?.remainingCredits !== undefined) {
-        // Directly update credits from the webhook data
-        setCredits(customEvent.detail.remainingCredits);
-        
-        // Show a toast notification for the completed call
-        toast.success(
-          `Appel terminé - ${customEvent.detail.billedMinutes} minute${customEvent.detail.billedMinutes > 1 ? 's' : ''} facturée${customEvent.detail.billedMinutes > 1 ? 's' : ''}`
-        );
-      } else {
-        // Fallback to fetching credits
-        fetchCredits();
-      }
-    };
+    // Poll every 2 minutes
+    const creditInterval = setInterval(fetchCredits, 3000);
 
-    creditUpdateEvent.addEventListener(CREDIT_UPDATE_EVENT, handleCreditUpdate);
-
-    return () => {
-      creditUpdateEvent.removeEventListener(CREDIT_UPDATE_EVENT, handleCreditUpdate);
-    };
+    // Cleanup on unmount
+    return () => clearInterval(creditInterval);
   }, []);
 
   const fetchCredits = async () => {
