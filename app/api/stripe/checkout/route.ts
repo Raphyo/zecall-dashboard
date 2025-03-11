@@ -41,6 +41,18 @@ export async function POST(request: Request) {
       );
     }
 
+    // Get amount from request body
+    const body = await request.json();
+    const amountInEuros = Number(body.amount);
+
+    // Validate amount
+    if (!amountInEuros || amountInEuros < 15) {
+      return NextResponse.json(
+        { error: 'Le montant minimum est de 15€' },
+        { status: 400 }
+      );
+    }
+
     // Get or create customer
     const customers = await stripe.customers.list({
       email: session.user.email,
@@ -59,9 +71,6 @@ export async function POST(request: Request) {
       });
       customerId = customer.id;
     }
-
-    // Define the amount in euros (single source of truth)
-    const amountInEuros = 0.5;
 
     // Create Checkout Session
     const checkoutSession = await stripe.checkout.sessions.create({
