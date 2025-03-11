@@ -10,13 +10,12 @@ import { Filters, FilterState } from '@/app/ui/calls/filters';
 import { useSession } from 'next-auth/react';
 import { exportCallsToCSV, calculateCallCost } from '@/app/lib/utils';
 import { Toast } from '@/app/ui/toast';
-import { CALL_COST_PER_MINUTE } from '@/app/lib/constants';
 
 function CallHistoryContent() {
   const [calls, setCalls] = useState<Call[]>([]);
   const [filteredCalls, setFilteredCalls] = useState<Call[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [setIsDeletingCalls] = useState(false);
+  const [isDeletingCalls, setIsDeletingCalls] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [selectedCalls, setSelectedCalls] = useState<string[]>([]);
   const [currentFilters, setCurrentFilters] = useState<FilterState>({
