@@ -5,8 +5,6 @@ import { useSession } from 'next-auth/react';
 import {
   HomeIcon,
   RocketLaunchIcon,
-  CreditCardIcon,
-  UserCircleIcon,
   ComputerDesktopIcon,
   PhoneIcon,
   ClockIcon,
@@ -69,8 +67,6 @@ export default function NavLinks() {
     },
     { name: 'Mes numéros', href: '/dashboard/phone-numbers', icon: PhoneIcon },
     { name: 'Historique des appels', href: '/dashboard/call-history', icon: ClockIcon },
-    // { name: 'Facturation', href: '/dashboard/billing', icon: CreditCardIcon },
-    { name: 'Profil', href: '/dashboard/profile', icon: UserCircleIcon },
   ];
 
   return (
