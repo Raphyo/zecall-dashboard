@@ -5,7 +5,7 @@ import NavLinks from '@/app/ui/dashboard/nav-links';
 import AcmeLogo from '@/app/ui/acme-logo';
 import { useSession } from 'next-auth/react';
 import ProfileMenu from '@/app/components/ProfileMenu';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CurrencyEuroIcon } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 
@@ -18,19 +18,40 @@ export default function SideNav() {
   const [credits, setCredits] = useState(0);
   const [isLoadingCheckout, setIsLoadingCheckout] = useState(false);
   const [rechargeAmount, setRechargeAmount] = useState<string>('15');
+  const lastFetchTime = useRef<number>(0);
+  const intervalRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
-    fetchCredits(); // Initial fetch
+    // Initial fetch
+    fetchCredits();
 
-    // Poll every 2 minutes
-    const creditInterval = setInterval(fetchCredits, 3000);
+    // Clear any existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    // Set new interval
+    intervalRef.current = setInterval(() => {
+      const now = Date.now();
+      // Only fetch if at least 55 seconds have passed since last fetch
+      if (now - lastFetchTime.current >= 55000) {
+        fetchCredits();
+      }
+    }, 60000);
 
     // Cleanup on unmount
-    return () => clearInterval(creditInterval);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
   }, []);
 
   const fetchCredits = async () => {
     try {
+      // Update last fetch time
+      lastFetchTime.current = Date.now();
+      
       const response = await fetch('/api/credits');
       const data = await response.json();
 

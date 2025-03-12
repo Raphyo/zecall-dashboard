@@ -49,7 +49,7 @@ export interface PhoneNumber {
 export const ANALYTICS_URL = process.env.NEXT_PUBLIC_ANALYTICS_SERVICE_URL || 'http://localhost:5002';
 export const ORCHESTRATOR_URL = process.env.NEXT_PUBLIC_ORCHESTRATOR_SERVICE_URL || 'http://localhost:5000';
 console.log('Environment:', process.env.NODE_ENV); // This will show 'development' or 'production'
-
+console.log('ANALYTICS_URL:', ANALYTICS_URL);
 const handleResponse = async (response: Response) => {
     if (!response.ok) {
         const errorData = await response.json().catch(() => null);
