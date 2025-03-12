@@ -130,35 +130,37 @@ export async function getAIAgent(agentId: string): Promise<AIAgent> {
     }
 }
 
-export async function updateAIAgent(agentId: string, agentData: FormData, email: string | null | undefined): Promise<AIAgent> {
-    try {
-        const userId = getCurrentUserId(email);
-        
-        const formDataWithUser = new FormData();
-        for (const [key, value] of agentData.entries()) {
-            formDataWithUser.append(key, value);
-        }
-        if (!formDataWithUser.has('userId')) {
-            formDataWithUser.append('userId', userId);
-        }
-
-        const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`, {
-            method: 'PUT',
-            body: formDataWithUser,
-            headers: {
-                'Accept': 'application/json',
-            }
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => null);
-            throw new Error(errorData?.detail || `Failed to update agent: ${response.statusText}`);
-        }
-        return response.json();
-    } catch (error) {
-        console.error('Error updating AI agent:', error);
-        throw error;
+export async function updateAIAgent(agentId: string, formData: FormData) {
+  try {
+    // Log the form data being sent
+    console.log('Updating AI Agent - Form Data:');
+    for (const [key, value] of formData.entries()) {
+      console.log(`${key}:`, value instanceof File ? `File: ${value.name}` : value);
     }
+
+    // Add headers to specify content type
+    const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`, {
+      method: 'PUT',
+      body: formData,
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    // Log the response status and data
+    console.log('Update AI Agent Response Status:', response.status);
+    const data = await response.json();
+    console.log('Update AI Agent Response Data:', data);
+
+    if (!response.ok) {
+      throw new Error(JSON.stringify(data.detail || data));
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in updateAIAgent:', error);
+    throw error;
+  }
 }
 
 export async function deleteAIAgent(agentId: string, email: string | null | undefined) {

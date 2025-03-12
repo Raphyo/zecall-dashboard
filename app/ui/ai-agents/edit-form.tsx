@@ -1,21 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { SpeakerWaveIcon, LanguageIcon, UserGroupIcon, DocumentIcon } from '@heroicons/react/24/outline';
+import { useEffect, useState, useRef } from 'react';
+import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { getAIAgents, updateAIAgent, deleteAIAgentFile } from '@/app/lib/api';
 import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 import { getUserIdFromEmail } from '@/app/lib/user-mapping';
 
+// Import audio files
+const metroAudio = '/api/audio?file=Almost-Empty-Metro-Station-in-Paris.mp3';
+const office1Audio = '/api/audio?file=Office-Ambience.mp3';
+const office2Audio = '/api/audio?file=Office-Ambience-2.mp3';
+
 interface AIAgent {
   id: string;
   name: string;
   voice: string;
   language: string;
-  personality: string;
-  speed: number;
-  call_type: string;
+  background_audio: string;
   knowledge_base_path?: string;
   knowledge_base_type?: string;
   llm_prompt: string;
@@ -31,10 +34,8 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
   const [agent, setAgent] = useState({
     name: '',
     voice: 'female',
+    backgroundAudio: 'none',
     language: 'fr-FR',
-    personality: 'professional',
-    speed: 1,
-    callType: 'inbound',
     knowledgeBase: null as File | null,
     knowledgeBaseType: 'pdf',
     llmPrompt: ''
@@ -45,11 +46,14 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
     message: string;
     type: 'error' | 'success';
   } | null>(null);
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const personalities = [
-    { id: 'professional', name: 'Professionnel', description: 'Formel et efficace' },
-    { id: 'friendly', name: 'Amical', description: 'Chaleureux et accessible' },
-    { id: 'casual', name: 'Décontracté', description: 'Naturel et détendu' },
+  const ambientSounds = [
+    { id: 'none', name: 'Aucun', url: null },
+    { id: 'metro', name: 'Métro Parisien', url: metroAudio },
+    { id: 'office1', name: 'Bureau 1', url: office1Audio },
+    { id: 'office2', name: 'Bureau 2', url: office2Audio },
   ];
 
   useEffect(() => {
@@ -62,10 +66,8 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
           setAgent({
             name: currentAgent.name,
             voice: currentAgent.voice,
+            backgroundAudio: currentAgent.background_audio || 'none',
             language: currentAgent.language,
-            personality: currentAgent.personality,
-            speed: currentAgent.speed,
-            callType: currentAgent.call_type,
             knowledgeBase: null,
             knowledgeBaseType: currentAgent.knowledge_base_type || 'pdf',
             llmPrompt: currentAgent.llm_prompt || ''
@@ -87,6 +89,69 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
 
     fetchAgent();
   }, [agentId, session?.user?.email]);
+
+  const handlePlayPreview = async (soundId: string, url: string | null) => {
+    if (!url) return;
+
+    try {
+      // If currently playing this sound, stop it
+      if (currentlyPlaying === soundId) {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current = null;
+        }
+        setCurrentlyPlaying(null);
+        return;
+      }
+
+      // Stop any currently playing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+
+      // Create new Audio element
+      const audio = new Audio(url);
+      
+      // Set up error handling
+      audio.onerror = () => {
+        setToast({
+          message: 'Erreur lors de la lecture du son',
+          type: 'error'
+        });
+        setCurrentlyPlaying(null);
+        audioRef.current = null;
+      };
+
+      // Add ended event listener
+      audio.addEventListener('ended', () => {
+        setCurrentlyPlaying(null);
+        audioRef.current = null;
+      });
+
+      // Play the audio
+      audioRef.current = audio;
+      await audio.play();
+      setCurrentlyPlaying(soundId);
+    } catch (error) {
+      setToast({
+        message: 'Erreur lors de l\'initialisation du son',
+        type: 'error'
+      });
+      setCurrentlyPlaying(null);
+      audioRef.current = null;
+    }
+  };
+
+  // Clean up audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   const validateFile = (file: File): boolean => {
     const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -115,30 +180,40 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
     setIsSubmitting(true);
 
     try {
+      console.log('Starting form submission with data:', agent);
+
       const formData = new FormData();
       formData.append('name', agent.name);
       formData.append('voice', agent.voice);
       formData.append('language', agent.language);
-      formData.append('personality', agent.personality);
-      formData.append('speed', agent.speed.toString());
-      formData.append('callType', agent.callType);
       formData.append('llmPrompt', agent.llmPrompt);
+      formData.append('backgroundAudio', agent.backgroundAudio);
 
       const userId = getUserIdFromEmail(session?.user?.email);
+      console.log('User ID from email:', userId);
+      
       if (!userId) {
         throw new Error('User not authenticated');
       }
       formData.append('userId', userId);
 
       if (agent.knowledgeBase) {
+        console.log('Adding knowledge base file:', agent.knowledgeBase.name);
         formData.append('knowledgeBase', agent.knowledgeBase);
       }
 
-      const response = await updateAIAgent(agentId, formData, session?.user?.email);
+      console.log('Submitting form data to API...');
+      const result = await updateAIAgent(agentId, formData);
+      console.log('API response:', result);
+
       router.push('/dashboard/ai-agents');
       router.refresh();
     } catch (error: any) {
-      console.error('Error updating AI agent:', error.message);
+      console.error('Detailed error in handleSubmit:', {
+        error,
+        message: error.message,
+        stack: error.stack
+      });
       setToast({
         message: `Erreur: ${error.message || 'Une erreur est survenue lors de la mise à jour de l\'agent'}`,
         type: 'error'
@@ -174,10 +249,11 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
       <div className="bg-white shadow-sm ring-1 ring-gray-900/5 rounded-xl">
         {/* Basic Information */}
         <div className="p-6">
+          <div className="flex items-center mb-6">
+            <UserIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Nom de l'agent <span className="text-red-500">*</span></h2>
+          </div>
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-              Nom de l'agent <span className="text-red-500">*</span>
-            </label>
             <input
               type="text"
               id="name"
@@ -190,43 +266,92 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
           </div>
         </div>
 
-        {/* Call Type Selection */}
+        {/* Voice Gender Section */}
         <div className="p-6 border-t border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-4">
-            Type d'appels <span className="text-red-500">*</span>
-          </label>
+          <div className="flex items-center mb-6">
+            <SpeakerWaveIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Genre de la voix <span className="text-red-500">*</span></h2>
+          </div>
           <div className="flex gap-4">
             <button
               type="button"
-              onClick={() => setAgent({ ...agent, callType: 'inbound' })}
-              className={`flex-1 px-4 py-3 rounded-md text-sm font-medium transition-colors ${
-                agent.callType === 'inbound'
+              onClick={() => setAgent({ ...agent, voice: 'male' })}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
+                agent.voice === 'male'
                   ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
               }`}
             >
-              Appels entrants
+              Masculine
             </button>
             <button
               type="button"
-              onClick={() => setAgent({ ...agent, callType: 'outbound' })}
-              className={`flex-1 px-4 py-3 rounded-md text-sm font-medium transition-colors ${
-                agent.callType === 'outbound'
+              onClick={() => setAgent({ ...agent, voice: 'female' })}
+              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
+                agent.voice === 'female'
                   ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
               }`}
             >
-              Appels sortants
+              Féminine
             </button>
           </div>
         </div>
 
+        {/* Background Audio Section */}
+        <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center mb-6">
+            <MusicalNoteIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Son d'ambiance <span className="text-red-500">*</span></h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {ambientSounds.map((sound) => (
+              <button
+                key={sound.id}
+                type="button"
+                onClick={() => setAgent({ ...agent, backgroundAudio: sound.id })}
+                className={`flex items-center justify-between px-4 py-3 rounded-md text-sm font-medium ${
+                  agent.backgroundAudio === sound.id
+                    ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                <span>{sound.name}</span>
+                {sound.url && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePlayPreview(sound.id, sound.url);
+                    }}
+                    className={`p-1.5 rounded-full ${
+                      currentlyPlaying === sound.id
+                        ? 'text-blue-600 bg-blue-100 hover:bg-blue-200'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {currentlyPlaying === sound.id ? (
+                      <PauseIcon className="h-4 w-4" />
+                    ) : (
+                      <PlayIcon className="h-4 w-4" />
+                    )}
+                  </button>
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Sélectionnez un son d'ambiance pour créer une atmosphère plus immersive
+          </p>
+        </div>
+
         {/* Knowledge Base Section */}
         <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center mb-6">
+            <DocumentIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Base de connaissances</h2>
+          </div>
           <div>
-            <label htmlFor="knowledgeBase" className="block text-sm font-medium text-gray-700 mb-2">
-              Base de connaissances
-            </label>
             <p className="mt-1 text-sm text-gray-500 mb-4">
               La base de connaissances permettra à l'agent IA d'intégrer le contexte spécifique de votre entreprise,
               de vos services ou de vos produits, afin de répondre avec précision et pertinence aux questions de vos utilisateurs.
@@ -265,63 +390,6 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
           </div>
         </div>
 
-        {/* Voice Settings */}
-        <div className="p-6 border-t border-gray-100">
-          <div className="flex items-center mb-6">
-            <SpeakerWaveIcon className="h-6 w-6 text-gray-600 mr-2" />
-            <h2 className="text-lg font-medium">Paramètres vocaux <span className="text-red-500">*</span></h2>
-          </div>
-
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Genre de la voix <span className="text-red-500">*</span>
-              </label>
-              <div className="flex gap-4">
-                <button
-                  type="button"
-                  onClick={() => setAgent({ ...agent, voice: 'male' })}
-                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
-                    agent.voice === 'male'
-                      ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  Masculine
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAgent({ ...agent, voice: 'female' })}
-                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
-                    agent.voice === 'female'
-                      ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  Féminine
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="speed" className="block text-sm font-medium text-gray-700 mb-2">
-                Vitesse de parole ({agent.speed}x) <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="range"
-                id="speed"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={agent.speed}
-                onChange={(e) => setAgent({ ...agent, speed: parseFloat(e.target.value) })}
-                className="w-full"
-                required
-              />
-            </div>
-          </div>
-        </div>
-
         {/* Language Settings */}
         <div className="p-6 border-t border-gray-100">
           <div className="flex items-center mb-6">
@@ -337,32 +405,8 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
               required
             >
               <option value="">Sélectionner une langue</option>
-              <optgroup label="Europe de l'Ouest">
-                <option value="fr">Français</option>
-                <option value="en">English</option>
-                <option value="es">Español</option>
-                <option value="pt">Português</option>
-                <option value="it">Italiano</option>
-                <option value="de">Deutsch</option>
-                <option value="nl">Nederlands</option>
-              </optgroup>
-              <optgroup label="Europe de l'Est">
-                <option value="ro">Română</option>
-                <option value="pl">Polski</option>
-                <option value="cs">Čeština</option>
-                <option value="hu">Magyar</option>
-              </optgroup>
-              <optgroup label="Europe du Nord">
-                <option value="sv">Svenska</option>
-                <option value="da">Dansk</option>
-                <option value="no">Norsk</option>
-                <option value="fi">Suomi</option>
-              </optgroup>
-              <optgroup label="Amériques">
-                <option value="pt-BR">Português (Brasil)</option>
-                <option value="es-MX">Español (México)</option>
-                <option value="en-US">English (US)</option>
-              </optgroup>
+              <option value="fr">Français</option>
+              <option value="en">English</option>
             </select>
             <p className="mt-1 text-xs text-gray-500">
               Choisissez la langue principale de l'agent
@@ -370,38 +414,13 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
           </div>
         </div>
 
-        {/* Personality Settings */}
-        <div className="p-6 border-t border-gray-100">
-          <div className="flex items-center mb-6">
-            <UserGroupIcon className="h-6 w-6 text-gray-600 mr-2" />
-            <h2 className="text-lg font-medium">Personnalité <span className="text-red-500">*</span></h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {personalities.map((personality) => (
-              <button
-                type="button"
-                key={personality.id}
-                onClick={() => setAgent({ ...agent, personality: personality.id })}
-                className={`p-4 rounded-lg border text-left ${
-                  agent.personality === personality.id
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-200'
-                }`}
-              >
-                <h3 className="font-medium mb-1">{personality.name}</h3>
-                <p className="text-sm text-gray-500">{personality.description}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* LLM Prompt Section */}
         <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center mb-6">
+            <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Prompt LLM <span className="text-red-500">*</span></h2>
+          </div>
           <div>
-            <label htmlFor="prompt" className="block text-sm font-medium text-gray-700 mb-2">
-              Prompt LLM <span className="text-red-500">*</span>
-            </label>
             <p className="mt-1 text-sm text-gray-500 mb-4">
               Le prompt vous permettra de guider votre agent IA dans le déroulement de l'appel.
             </p>
