@@ -8,9 +8,9 @@ import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 
 // Import audio files
-const metroAudio = '/api/audio?file=Almost-Empty-Metro-Station-in-Paris.mp3';
-const office1Audio = '/api/audio?file=Office-Ambience.mp3';
-const office2Audio = '/api/audio?file=Office-Ambience-2.mp3';
+const metroAudio = '/api/audio?file=backgrounds%2FAlmost-Empty-Metro-Station-in-Paris.mp3';
+const office1Audio = '/api/audio?file=backgrounds%2FOffice-Ambience.mp3';
+const office2Audio = '/api/audio?file=backgrounds%2FOffice-Ambience-2.mp3';
 
 // Voice samples
 const voiceSamples = [
