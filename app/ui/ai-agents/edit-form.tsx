@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { getAIAgents, updateAIAgent, deleteAIAgentFile } from '@/app/lib/api';
+import { ORCHESTRATOR_URL } from '@/app/lib/api';
 import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 import { getUserIdFromEmail } from '@/app/lib/user-mapping';
@@ -214,8 +215,37 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
       const result = await updateAIAgent(agentId, formData);
       console.log('API response:', result);
 
+      // Send webhook to update configuration
+      try {
+        const webhookResponse = await fetch(
+          `${ORCHESTRATOR_URL}/webhook/config-update?agent_id=${encodeURIComponent(agentId)}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          }
+        );
+
+        if (!webhookResponse.ok) {
+          const errorText = await webhookResponse.text();
+          console.error('Failed to update agent configuration:', errorText);
+          setToast({
+            message: `Mise à jour réussie mais erreur lors de la configuration: ${errorText}`,
+            type: 'error'
+          });
+          return;
+        }
+      } catch (error: any) {
+        console.error('Error updating agent configuration:', error);
+        setToast({
+          message: 'Mise à jour réussie mais erreur lors de la configuration',
+          type: 'error'
+        });
+        return;
+      }
+
       router.push('/dashboard/ai-agents');
-      router.refresh();
     } catch (error: any) {
       console.error('Detailed error in handleSubmit:', {
         error,
