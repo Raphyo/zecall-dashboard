@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { getCalls, getCampaigns, updateCampaignStatus } from '@/app/lib/api';
 import { useSession } from 'next-auth/react';
 import { 
@@ -43,6 +43,9 @@ interface Campaign {
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const refreshIntervalRef = useRef<NodeJS.Timeout>();
+  const REFRESH_INTERVAL = 10000; // Refresh every 10 seconds to match call history page
   const [stats, setStats] = useState({
     inboundCalls: 0,
     outboundCalls: 0,
@@ -66,141 +69,157 @@ export default function DashboardPage() {
     }
   }, [status]);
 
-  useEffect(() => {
-    const loadDashboardData = async () => {
-      if (status !== 'authenticated' || !session?.user?.email) return;
-      
-      try {
+  const loadDashboardData = async (isRefresh = false) => {
+    if (status !== 'authenticated' || !session?.user?.email) return;
+    
+    try {
+      // Only show loading state on initial load
+      if (!isRefresh) {
         setIsLoading(true);
-        const calls = await getCalls(session.user.email);
-        const campaigns = await getCampaigns(session.user.email);
-        
-        // Get recent calls (last 10)
-        const recent = calls
-        .filter(call => call.date && call.hour) // Ensure we have valid date and hour
-        .sort((a, b) => {
-          const dateA = new Date(a.date + ' ' + a.hour);
-          const dateB = new Date(b.date + ' ' + b.hour);
-          return dateB.getTime() - dateA.getTime();
-        })
-        .map(call => ({
-          ...call,
-          call_status: call.call_status || 'inconnu' // Provide a default value for null
-        }))
-        .slice(0, 10);
-        setRecentCalls(recent);
+      }
 
-        // Check and update campaign statuses
-        for (const campaign of campaigns) {
-          if (campaign.status !== 'terminée') {
-            const campaignCalls = calls.filter(call => call.campaign_id === campaign.id);
-            if (campaignCalls.length > 0 && campaignCalls.length >= campaign.contacts_count) {
-              const allCallsCompleted = campaignCalls.every(call => 
-                call.call_status === 'completed' || call.call_status === 'failed'
-              );
-              
-              if (allCallsCompleted) {
-                try {
-                  await updateCampaignStatus(campaign.id, 'terminée');
-                  campaign.status = 'terminée'; // Update local state
-                } catch (error) {
-                  console.error('Error updating campaign status:', error);
-                }
+      const calls = await getCalls(session.user.email);
+      const campaigns = await getCampaigns(session.user.email);
+      
+      // Get recent calls (last 10)
+      const recent = calls
+      .filter(call => call.date && call.hour)
+      .sort((a, b) => {
+        const dateA = new Date(a.date + ' ' + a.hour);
+        const dateB = new Date(b.date + ' ' + b.hour);
+        return dateB.getTime() - dateA.getTime();
+      })
+      .map(call => ({
+        ...call,
+        call_status: call.call_status || 'inconnu'
+      }))
+      .slice(0, 10);
+      setRecentCalls(recent);
+
+      // Check and update campaign statuses
+      for (const campaign of campaigns) {
+        if (campaign.status !== 'terminée') {
+          const campaignCalls = calls.filter(call => call.campaign_id === campaign.id);
+          if (campaignCalls.length > 0 && campaignCalls.length >= campaign.contacts_count) {
+            const allCallsCompleted = campaignCalls.every(call => 
+              call.call_status === 'completed' || call.call_status === 'failed'
+            );
+            
+            if (allCallsCompleted) {
+              try {
+                await updateCampaignStatus(campaign.id, 'terminée');
+                campaign.status = 'terminée';
+              } catch (error) {
+                console.error('Error updating campaign status:', error);
               }
             }
           }
         }
+      }
 
-        // Get today's and yesterday's dates
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
+      // Get today's and yesterday's dates
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
 
-        // Filter calls for today and yesterday
-        const todayCalls = calls.filter(call => {
-          const callDate = new Date(call.date);
-          return callDate >= today && callDate < tomorrow;
-        });
+      // Filter calls for today and yesterday
+      const todayCalls = calls.filter(call => {
+        const callDate = new Date(call.date);
+        return callDate >= today && callDate < tomorrow;
+      });
 
-        const yesterdayCalls = calls.filter(call => {
-          const callDate = new Date(call.date);
-          return callDate >= yesterday && callDate < today;
-        });
+      const yesterdayCalls = calls.filter(call => {
+        const callDate = new Date(call.date);
+        return callDate >= yesterday && callDate < today;
+      });
 
-        // Count today's calls by direction
-        const todayInbound = todayCalls.filter(call => call.direction === 'entrant').length;
-        const todayOutbound = todayCalls.filter(call => call.direction === 'sortant').length;
+      // Count today's calls by direction
+      const todayInbound = todayCalls.filter(call => call.direction === 'entrant').length;
+      const todayOutbound = todayCalls.filter(call => call.direction === 'sortant').length;
 
-        // Count yesterday's calls by direction
-        const yesterdayInbound = yesterdayCalls.filter(call => call.direction === 'entrant').length;
-        const yesterdayOutbound = yesterdayCalls.filter(call => call.direction === 'sortant').length;
+      // Count yesterday's calls by direction
+      const yesterdayInbound = yesterdayCalls.filter(call => call.direction === 'entrant').length;
+      const yesterdayOutbound = yesterdayCalls.filter(call => call.direction === 'sortant').length;
 
-        // Count total calls by direction
-        const inboundCalls = calls.filter(call => call.direction === 'entrant').length;
-        const outboundCalls = calls.filter(call => call.direction === 'sortant').length;
+      // Count total calls by direction
+      const inboundCalls = calls.filter(call => call.direction === 'entrant').length;
+      const outboundCalls = calls.filter(call => call.direction === 'sortant').length;
 
-        // Calculate total duration (in seconds)
-        const totalDuration = calls.reduce((sum, call) => sum + (call.duration || 0), 0);
-        const avgDuration = calls.length > 0 ? Math.round(totalDuration / calls.length) : 0;
+      // Calculate total duration (in seconds)
+      const totalDuration = calls.reduce((sum, call) => sum + (call.duration || 0), 0);
+      const avgDuration = calls.length > 0 ? Math.round(totalDuration / calls.length) : 0;
 
-        // Calculate average calls per day
-        const dates = [...new Set(calls.map(call => call.date.split('T')[0]))];
-        const avgCallsPerDay = dates.length > 0 ? Math.round(calls.length / dates.length) : 0;
+      // Calculate average calls per day
+      const dates = [...new Set(calls.map(call => call.date.split('T')[0]))];
+      const avgCallsPerDay = dates.length > 0 ? Math.round(calls.length / dates.length) : 0;
 
-        // Calculate total cost and average cost per call
-        let totalCost = 0;
-        try {
-          totalCost = calls.reduce((sum, call) => {
-            const callCost = calculateCallCost(call.duration || 0);
-            return sum + (Number(callCost) || 0);
-          }, 0);
-        } catch (error) {
-          console.error('Error calculating total cost:', error);
-        }
-
-        const avgCostPerCall = calls.length > 0 ? totalCost / calls.length : 0;
-
-        // Get active campaigns
-        const active = campaigns
-          .filter(c => c.status !== 'terminée')
-          .map(c => ({
-            id: c.id,
-            name: c.name,
-            total_calls: c.contacts_count,
-            completed_calls: calls.filter(call => call.campaign_id === c.id).length,
-            progress: Math.round((calls.filter(call => call.campaign_id === c.id).length / c.contacts_count) * 100)
-          }));
-        setActiveCampaigns(active);
-
-        setStats({
-          inboundCalls,
-          outboundCalls,
-          avgDuration,
-          avgCallsPerDay,
-          todayInbound,
-          todayOutbound,
-          yesterdayInbound,
-          yesterdayOutbound,
-          totalDuration,
-          totalCost,
-          avgCostPerCall
-        });
+      // Calculate total cost and average cost per call
+      let totalCost = 0;
+      try {
+        totalCost = calls.reduce((sum, call) => {
+          const callCost = calculateCallCost(call.duration || 0);
+          return sum + (Number(callCost) || 0);
+        }, 0);
       } catch (error) {
-        console.error('Error loading dashboard data:', error);
-      } finally {
+        console.error('Error calculating total cost:', error);
+      }
+
+      const avgCostPerCall = calls.length > 0 ? totalCost / calls.length : 0;
+
+      // Get active campaigns
+      const active = campaigns
+        .filter(c => c.status !== 'terminée')
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          total_calls: c.contacts_count,
+          completed_calls: calls.filter(call => call.campaign_id === c.id).length,
+          progress: Math.round((calls.filter(call => call.campaign_id === c.id).length / c.contacts_count) * 100)
+        }));
+      setActiveCampaigns(active);
+
+      setStats({
+        inboundCalls,
+        outboundCalls,
+        avgDuration,
+        avgCallsPerDay,
+        todayInbound,
+        todayOutbound,
+        yesterdayInbound,
+        yesterdayOutbound,
+        totalDuration,
+        totalCost,
+        avgCostPerCall
+      });
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      if (!isRefresh) {
         setIsLoading(false);
       }
+      setIsInitialLoad(false);
+    }
+  };
+
+  // Set up auto-refresh
+  useEffect(() => {
+    // Initial load
+    loadDashboardData(false);
+
+    // Set up interval for periodic refresh
+    refreshIntervalRef.current = setInterval(() => {
+      loadDashboardData(true);
+    }, REFRESH_INTERVAL);
+
+    // Cleanup function
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
     };
-
-    loadDashboardData();
-
-    // Set up periodic refresh
-    const refreshInterval = setInterval(loadDashboardData, 30000); // Refresh every 30 seconds
-
-    return () => clearInterval(refreshInterval);
   }, [session?.user?.email, status]);
 
   // Show loading state

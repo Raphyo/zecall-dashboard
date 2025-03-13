@@ -9,9 +9,14 @@ export async function GET(request: NextRequest) {
       return new NextResponse('File parameter is required', { status: 400 });
     }
 
-    // Ensure the file path is within the public/audio/samples directory
-    const safePath = path.join(process.cwd(), 'public', 'audio', 'samples', filename);
-    if (!safePath.startsWith(path.join(process.cwd(), 'public', 'audio', 'samples'))) {
+    // Get the base audio directory
+    const audioBaseDir = path.join(process.cwd(), 'public', 'audio');
+
+    // Construct the full file path
+    const safePath = path.join(audioBaseDir, filename);
+
+    // Ensure the file path is within the public/audio directory
+    if (!safePath.startsWith(audioBaseDir)) {
       return new NextResponse('Invalid file path', { status: 400 });
     }
 

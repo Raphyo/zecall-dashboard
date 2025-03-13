@@ -42,18 +42,25 @@ function CallHistoryContent() {
     position: { x: number; y: number }; 
     colorClass?: string 
   } | null>(null);
+  const REFRESH_INTERVAL = 10000; // Refresh every 10 seconds
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Add a ref to track if we're on a touch device
   const isTouchDevice = useRef(false);
+  const refreshIntervalRef = useRef<NodeJS.Timeout>();
 
   // Detect touch device on mount
   useEffect(() => {
     isTouchDevice.current = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   }, []);
 
-  const loadCalls = async () => {
+  const loadCalls = async (isRefresh = false) => {
     try {
-      setIsLoading(true);
+      // Only show loading state on initial load
+      if (!isRefresh) {
+        setIsLoading(true);
+      }
+
       const fetchedCalls = await getCalls(session?.user?.email, campaignId);
       setCalls(fetchedCalls);
       
@@ -105,13 +112,37 @@ function CallHistoryContent() {
     } catch (error) {
       console.error('Error loading calls:', error);
     } finally {
-      setIsLoading(false);
+      if (!isRefresh) {
+        setIsLoading(false);
+      }
+      setIsInitialLoad(false);
     }
   };
 
+  // Set up auto-refresh
   useEffect(() => {
-    loadCalls();
-  }, [session, campaignId]);
+    // Initial load
+    loadCalls(false);
+
+    // Set up interval for periodic refresh
+    refreshIntervalRef.current = setInterval(() => {
+      loadCalls(true); // Pass true to indicate this is a refresh
+    }, REFRESH_INTERVAL);
+
+    // Cleanup function
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+    };
+  }, [session, campaignId, currentFilters]); // Added currentFilters to dependencies
+
+  // Add a separate effect to handle filter changes
+  useEffect(() => {
+    if (!isInitialLoad) {
+      loadCalls(true);
+    }
+  }, [currentFilters]);
 
   const handlePlayAudio = (url: string, id: string, name: string) => {
     // Find the call to get its duration from the database

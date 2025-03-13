@@ -13,6 +13,14 @@ const metroAudio = '/api/audio?file=Almost-Empty-Metro-Station-in-Paris.mp3';
 const office1Audio = '/api/audio?file=Office-Ambience.mp3';
 const office2Audio = '/api/audio?file=Office-Ambience-2.mp3';
 
+// Voice samples
+const voiceSamples = [
+  { id: 'Guillaume', name: 'Guillaume (H)', gender: 'male', url: '/api/audio?file=voices%2FGuillaume-11labs.mp3' },
+  { id: 'Lucien', name: 'Lucien (H)', gender: 'male', url: '/api/audio?file=voices%2FLucien-11labs.mp3' },
+  { id: 'Audrey', name: 'Audrey (F)', gender: 'female', url: '/api/audio?file=voices%2FAudrey-11labs.mp3' },
+  { id: 'Jessy', name: 'Jessy (F)', gender: 'female', url: '/api/audio?file=voices%2FJessy-11labs.mp3' },
+];
+
 interface AIAgent {
   id: string;
   name: string;
@@ -33,7 +41,7 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true);
   const [agent, setAgent] = useState({
     name: '',
-    voice: 'female',
+    voice: 'Guillaume',
     backgroundAudio: 'none',
     language: 'fr-FR',
     knowledgeBase: null as File | null,
@@ -266,36 +274,57 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
           </div>
         </div>
 
-        {/* Voice Gender Section */}
+        {/* Voice Selection Section */}
         <div className="p-6 border-t border-gray-100">
           <div className="flex items-center mb-6">
             <SpeakerWaveIcon className="h-6 w-6 text-gray-600 mr-2" />
-            <h2 className="text-lg font-medium">Genre de la voix <span className="text-red-500">*</span></h2>
+            <h2 className="text-lg font-medium">Voix <span className="text-red-500">*</span></h2>
           </div>
-          <div className="flex gap-4">
-            <button
-              type="button"
-              onClick={() => setAgent({ ...agent, voice: 'male' })}
-              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
-                agent.voice === 'male'
-                  ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              Masculine
-            </button>
-            <button
-              type="button"
-              onClick={() => setAgent({ ...agent, voice: 'female' })}
-              className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
-                agent.voice === 'female'
-                  ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              Féminine
-            </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {voiceSamples.map((voice) => (
+              <div
+                key={voice.id}
+                className={`flex items-center justify-between px-4 py-3 rounded-md ${
+                  agent.voice === voice.id
+                    ? 'bg-blue-50 border-2 border-blue-200'
+                    : 'bg-white border border-gray-300'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setAgent({ ...agent, voice: voice.id })}
+                  className={`text-sm font-medium flex-grow text-left ${
+                    agent.voice === voice.id
+                      ? 'text-blue-700'
+                      : 'text-gray-700 hover:text-gray-900'
+                  }`}
+                >
+                  {voice.name}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePlayPreview(voice.id, voice.url);
+                  }}
+                  className={`p-1.5 rounded-full ml-2 ${
+                    currentlyPlaying === voice.id
+                      ? 'text-blue-600 bg-blue-100 hover:bg-blue-200'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {currentlyPlaying === voice.id ? (
+                    <PauseIcon className="h-4 w-4" />
+                  ) : (
+                    <PlayIcon className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            ))}
           </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Sélectionnez la voix que votre agent utilisera pour les appels. Cliquez sur le bouton de lecture pour écouter un exemple.
+          </p>
         </div>
 
         {/* Background Audio Section */}
@@ -306,17 +335,25 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {ambientSounds.map((sound) => (
-              <button
+              <div
                 key={sound.id}
-                type="button"
-                onClick={() => setAgent({ ...agent, backgroundAudio: sound.id })}
-                className={`flex items-center justify-between px-4 py-3 rounded-md text-sm font-medium ${
+                className={`flex items-center justify-between px-4 py-3 rounded-md ${
                   agent.backgroundAudio === sound.id
-                    ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    ? 'bg-blue-50 border-2 border-blue-200'
+                    : 'bg-white border border-gray-300'
                 }`}
               >
-                <span>{sound.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setAgent({ ...agent, backgroundAudio: sound.id })}
+                  className={`text-sm font-medium flex-grow text-left ${
+                    agent.backgroundAudio === sound.id
+                      ? 'text-blue-700'
+                      : 'text-gray-700 hover:text-gray-900'
+                  }`}
+                >
+                  {sound.name}
+                </button>
                 {sound.url && (
                   <button
                     type="button"
@@ -324,7 +361,7 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
                       e.stopPropagation();
                       handlePlayPreview(sound.id, sound.url);
                     }}
-                    className={`p-1.5 rounded-full ${
+                    className={`p-1.5 rounded-full ml-2 ${
                       currentlyPlaying === sound.id
                         ? 'text-blue-600 bg-blue-100 hover:bg-blue-200'
                         : 'text-gray-600 hover:bg-gray-100'
@@ -337,7 +374,7 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
                     )}
                   </button>
                 )}
-              </button>
+              </div>
             ))}
           </div>
           <p className="mt-2 text-xs text-gray-500">
