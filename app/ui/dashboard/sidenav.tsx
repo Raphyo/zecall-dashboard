@@ -108,7 +108,7 @@ export default function SideNav() {
         </div>
       </Link>
       <div className="flex grow flex-row justify-between space-x-2 md:flex-col md:space-x-0 md:space-y-2 min-h-0">
-        <div className="flex flex-row justify-between space-x-2 md:flex-col md:space-x-0 md:space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent flex-1">
+        <div className="flex flex-row justify-between space-x-2 md:flex-col md:space-x-0 md:space-y-2 flex-1">
           <NavLinks />
           <div className="hidden h-auto w-full grow rounded-md bg-gray-50 md:block"></div>
           <div className="hidden md:flex flex-col space-y-4 px-3 py-2 shrink-0">
