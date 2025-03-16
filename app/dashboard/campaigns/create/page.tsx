@@ -91,7 +91,8 @@ export default function CreateCampaignPage() {
     const hoursUTC1 = hours + 1;
 
     // Check if it's a weekend (0 is Sunday, 6 is Saturday)
-    if (day === 0 || day === 6) {
+    // if (day === 0 || day === 6) {
+    if (day === 6) {
       toast.error(
         <div className="text-sm">
           <p className="font-medium">Horaires non autorisés</p>
