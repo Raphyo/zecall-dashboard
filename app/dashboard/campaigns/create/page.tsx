@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { getPhoneNumbers, createCampaign, type PhoneNumber } from '@/app/lib/api';
 import { useSession } from 'next-auth/react';
 import { getUserIdFromEmail } from '@/app/lib/user-mapping';
+import { toast, Toaster } from 'react-hot-toast';
 
 interface CampaignForm {
   name: string;
@@ -65,17 +66,51 @@ export default function CreateCampaignPage() {
     
     // Validate required fields
     if (!campaign.name.trim()) {
-      alert('Le nom de la campagne est requis');
+      toast.error('Le nom de la campagne est requis');
       return;
     }
 
     if (!campaign.contactsFile) {
-      alert('La liste des contacts est requise');
+      toast.error('La liste des contacts est requise');
       return;
     }
 
     if (!campaign.phoneNumberId) {
-      alert('Un numéro de téléphone est requis');
+      toast.error('Un numéro de téléphone est requis');
+      return;
+    }
+
+    // Check business hours
+    const now = new Date();
+    const scheduleDate = selectedDate ? new Date(selectedDate) : now;
+    const hours = scheduleDate.getHours();
+    const minutes = scheduleDate.getMinutes();
+    const day = scheduleDate.getDay();
+    
+    // Convert time to UTC+1
+    const hoursUTC1 = hours + 1;
+
+    // Check if it's a weekend (0 is Sunday, 6 is Saturday)
+    if (day === 0 || day === 6) {
+      toast.error(
+        <div className="text-sm">
+          <p className="font-medium">Horaires non autorisés</p>
+          <p>Les campagnes ne peuvent être lancées que pendant les jours ouvrables (lundi au vendredi).</p>
+        </div>,
+        { duration: 5000 }
+      );
+      return;
+    }
+
+    // Check if it's within business hours (10:00-13:00 and 14:00-20:00 UTC+1)
+    if (hoursUTC1 < 10 || hoursUTC1 === 13 || hoursUTC1 >= 20) {
+      toast.error(
+        <div className="text-sm">
+          <p className="font-medium">Horaires non autorisés</p>
+          <p>Les campagnes ne peuvent être lancées qu'entre 10h et 20h (hors 13h-14h).</p>
+        </div>,
+        { duration: 5000 }
+      );
       return;
     }
 
@@ -172,6 +207,39 @@ export default function CreateCampaignPage() {
 
   return (
     <>
+      <Toaster
+        position="bottom-right"
+        reverseOrder={false}
+        containerStyle={{
+          bottom: '24px',
+          right: '24px',
+        }}
+        toastOptions={{
+          style: {
+            background: '#ffffff',
+            color: '#374151',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            borderRadius: '8px',
+            padding: '16px',
+          },
+          success: {
+            duration: 4000,
+            style: {
+              background: '#F0FDF4',
+              color: '#166534',
+              border: '1px solid #DCFCE7',
+            },
+          },
+          error: {
+            duration: 6000,
+            style: {
+              background: '#FEF2F2',
+              color: '#991B1B',
+              border: '1px solid #FEE2E2',
+            },
+          },
+        }}
+      />
       {isSubmitting ? (
         <div className="w-full max-w-3xl mx-auto">
           <div className="h-8 w-48 bg-gray-200 rounded mb-6 animate-pulse" />
@@ -315,17 +383,6 @@ export default function CreateCampaignPage() {
                           <option value={2}>2 tentatives (1 rappel)</option>
                           <option value={3}>3 tentatives (2 rappels)</option>
                           <option value={4}>4 tentatives (3 rappels)</option>
-                          <option value={5}>5 tentatives (4 rappels)</option>
-                          <option value={6}>6 tentatives (5 rappels)</option>
-                          <option value={7}>7 tentatives (6 rappels)</option>
-                          <option value={8}>8 tentatives (7 rappels)</option>
-                          <option value={9}>9 tentatives (8 rappels)</option>
-                          <option value={10}>10 tentatives (9 rappels)</option>
-                          <option value={11}>11 tentatives (10 rappels)</option>
-                          <option value={12}>12 tentatives (11 rappels)</option>
-                          <option value={13}>13 tentatives (12 rappels)</option>
-                          <option value={14}>14 tentatives (13 rappels)</option>
-                          <option value={15}>15 tentatives (14 rappels)</option>
                         </select>
                       </div>
 
@@ -339,15 +396,13 @@ export default function CreateCampaignPage() {
                             onChange={(e) => setCampaign({ ...campaign, retry_frequency: parseInt(e.target.value) })}
                             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                           >
-                            <option value={1}>1 minute</option>
-                            <option value={5}>5 minutes</option>
-                            <option value={1440}>1 jour</option>
-                            <option value={2880}>2 jours</option>
-                            <option value={4320}>3 jours</option>
-                            <option value={5760}>4 jours</option>
-                            <option value={7200}>5 jours</option>
-                            <option value={8640}>6 jours</option>
-                            <option value={10080}>7 jours</option>
+                            <option value={60}>Toutes les heures</option>
+                            <option value={120}>Toutes les 2 heures</option>
+                            <option value={240}>Toutes les 4 heures</option>
+                            <option value={360}>Toutes les 6 heures</option>
+                            <option value={480}>Toutes les 8 heures</option>
+                            <option value={720}>Toutes les 12 heures</option>
+                            <option value={1440}>Tous les jours</option>
                           </select>
                         </div>
                       )}
