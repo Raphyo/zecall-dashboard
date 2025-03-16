@@ -135,7 +135,7 @@ export default function CreateCampaignPage() {
       console.log('Creating campaign with status:', status);
       await createCampaign(apiFormData);
 
-      router.push('/dashboard/campaigns');
+      router.replace('/dashboard/campaigns');
       setIsSubmitting(false);
     } catch (error) {
       console.error('Error creating campaign:', error);
@@ -163,7 +163,7 @@ export default function CreateCampaignPage() {
       }
 
       await createCampaign(apiFormData);
-      router.push('/dashboard/campaigns');
+      router.replace('/dashboard/campaigns');
     } catch (error) {
       console.error('Error saving draft:', error);
       toast.error(error instanceof Error ? error.message : 'Erreur lors de l\'enregistrement du brouillon');
@@ -484,7 +484,7 @@ export default function CreateCampaignPage() {
               <div className="mt-6 flex justify-end gap-4">
                 <button
                   type="button"
-                  onClick={() => router.push('/dashboard/campaigns')}
+                  onClick={() => router.replace('/dashboard/campaigns')}
                   className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Annuler
