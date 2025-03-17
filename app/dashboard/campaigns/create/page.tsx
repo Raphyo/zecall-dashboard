@@ -114,36 +114,39 @@ export default function CreateCampaignPage() {
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-      const apiFormData = new FormData();
-      apiFormData.append('name', campaign.name);
-      apiFormData.append('contacts_file', campaign.contactsFile as File);
-      apiFormData.append('phone_number_id', campaign.phoneNumberId);
-      apiFormData.append('max_retries', campaign.max_retries.toString());
-      // Only append retry_frequency if max_retries > 1
-      if (campaign.max_retries > 1) {
-        apiFormData.append('retry_frequency', campaign.retry_frequency.toString());
-      }
-      // Set status based on submission type
-      const status = selectedDate ? 'planifiée' : 'en-cours';
-      apiFormData.append('status', status);
-      const userId = getUserIdFromEmail(session?.user?.email);
-      if (userId) {
-        apiFormData.append('user_id', userId);
-      }
-      if (selectedDate) {
-        apiFormData.append('scheduled_date', selectedDate);
-      }
+    setIsSubmitting(true);
+    const apiFormData = new FormData();
+    apiFormData.append('name', campaign.name);
+    apiFormData.append('contacts_file', campaign.contactsFile as File);
+    apiFormData.append('phone_number_id', campaign.phoneNumberId);
+    apiFormData.append('max_retries', campaign.max_retries.toString());
+    // Only append retry_frequency if max_retries > 1
+    if (campaign.max_retries > 1) {
+      apiFormData.append('retry_frequency', campaign.retry_frequency.toString());
+    }
+    // Set status based on submission type
+    const status = selectedDate ? 'planifiée' : 'en-cours';
+    apiFormData.append('status', status);
+    const userId = getUserIdFromEmail(session?.user?.email);
+    if (userId) {
+      apiFormData.append('user_id', userId);
+    }
+    if (selectedDate) {
+      apiFormData.append('scheduled_date', selectedDate);
+    }
 
+    // Show success toast and redirect immediately
+    toast.success('Campagne en cours de création...');
+    router.push('/dashboard/campaigns');
+
+    try {
       console.log('Creating campaign with status:', status);
       await createCampaign(apiFormData);
-
-      router.push('/dashboard/campaigns');
-      setIsSubmitting(false);
     } catch (error) {
       console.error('Error creating campaign:', error);
-      alert(error instanceof Error ? error.message : 'Failed to create campaign');
+      // Show error toast but don't redirect back since user is already on campaigns page
+      toast.error('Erreur lors de la création de la campagne');
+    } finally {
       setIsSubmitting(false);
     }
   };
