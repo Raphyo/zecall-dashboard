@@ -83,16 +83,15 @@ export default function CreateCampaignPage() {
     // Check business hours
     const now = new Date();
     const scheduleDate = selectedDate ? new Date(selectedDate) : now;
-    const hours = scheduleDate.getHours();
-    const minutes = scheduleDate.getMinutes();
-    const day = scheduleDate.getDay();
     
-    // Convert time to UTC+1
-    const hoursUTC1 = hours + 1;
-
+    // Convert to French time (UTC+1)
+    const frenchTime = new Date(scheduleDate.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+    const hours = frenchTime.getHours();
+    const minutes = frenchTime.getMinutes();
+    const day = frenchTime.getDay();
+    
     // Check if it's a weekend (0 is Sunday, 6 is Saturday)
-    // if (day === 0 || day === 6) {
-    if (day === 6) {
+    if (day === 0 || day === 6) {
       toast.error(
         <div className="text-sm">
           <p className="font-medium">Horaires non autorisés</p>
@@ -103,8 +102,8 @@ export default function CreateCampaignPage() {
       return;
     }
 
-    // Check if it's within business hours (10:00-13:00 and 14:00-20:00 UTC+1)
-    if (hoursUTC1 < 10 || hoursUTC1 === 13 || hoursUTC1 >= 20) {
+    // Check if it's within business hours (10:00-13:00 and 14:00-20:00 French time)
+    if (hours < 10 || hours === 13 || hours >= 20) {
       toast.error(
         <div className="text-sm">
           <p className="font-medium">Horaires non autorisés</p>
