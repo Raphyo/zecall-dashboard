@@ -136,8 +136,15 @@ export default function CreateCampaignPage() {
     }
 
     // Show success toast and redirect immediately
-    toast.success('Campagne en cours de création...');
-    router.push('/dashboard/campaigns');
+    toast.success('Campagne en cours de création...', {
+      duration: 3000,
+      position: 'bottom-right',
+    });
+    
+    // Add a small delay before navigation to ensure toast is visible
+    setTimeout(() => {
+      router.push('/dashboard/campaigns');
+    }, 500);
 
     try {
       console.log('Creating campaign with status:', status);
@@ -145,7 +152,10 @@ export default function CreateCampaignPage() {
     } catch (error) {
       console.error('Error creating campaign:', error);
       // Show error toast but don't redirect back since user is already on campaigns page
-      toast.error('Erreur lors de la création de la campagne');
+      toast.error('Erreur lors de la création de la campagne', {
+        duration: 5000,
+        position: 'bottom-right',
+      });
     } finally {
       setIsSubmitting(false);
     }
