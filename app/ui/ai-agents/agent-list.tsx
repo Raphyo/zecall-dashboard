@@ -68,12 +68,21 @@ export function AgentsList() {
         message: 'Agent supprimé avec succès',
         type: 'success'
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting agent:', error);
-      setToast({
-        message: 'Impossible de supprimer l\'agent car il est associé à un ou plusieurs numéros de téléphone',
-        type: 'error'
-      });
+      if (error.message.includes('404')) {
+        setToast({
+          message: 'L\'agent n\'existe plus dans la base de données',
+          type: 'error'
+        });
+        // Remove the non-existent agent from the UI
+        setAgents(agents.filter(agent => agent.id !== agentId));
+      } else {
+        setToast({
+          message: 'Impossible de supprimer l\'agent car il est associé à un ou plusieurs numéros de téléphone',
+          type: 'error'
+        });
+      }
     }
   };
 

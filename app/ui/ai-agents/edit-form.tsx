@@ -42,7 +42,7 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true);
   const [agent, setAgent] = useState({
     name: '',
-    voice: 'Guillaume',
+    voice_name: 'guillaume-11labs',
     backgroundAudio: 'none',
     language: 'fr-FR',
     knowledgeBase: null as File | null,
@@ -74,7 +74,7 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
         if (currentAgent) {
           setAgent({
             name: currentAgent.name,
-            voice: currentAgent.voice,
+            voice_name: currentAgent.voice_name,
             backgroundAudio: currentAgent.background_audio || 'none',
             language: currentAgent.language,
             knowledgeBase: null,
@@ -193,7 +193,7 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
 
       const formData = new FormData();
       formData.append('name', agent.name);
-      formData.append('voice', agent.voice);
+      formData.append('voice_name', agent.voice_name);
       formData.append('language', agent.language);
       formData.append('llmPrompt', agent.llmPrompt);
       formData.append('backgroundAudio', agent.backgroundAudio);
@@ -315,16 +315,16 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
               <div
                 key={voice.id}
                 className={`flex items-center justify-between px-4 py-3 rounded-md ${
-                  agent.voice === voice.id
+                  agent.voice_name === voice.id
                     ? 'bg-blue-50 border-2 border-blue-200'
                     : 'bg-white border border-gray-300'
                 }`}
               >
                 <button
                   type="button"
-                  onClick={() => setAgent({ ...agent, voice: voice.id })}
+                  onClick={() => setAgent({ ...agent, voice_name: voice.id })}
                   className={`text-sm font-medium flex-grow text-left ${
-                    agent.voice === voice.id
+                    agent.voice_name === voice.id
                       ? 'text-blue-700'
                       : 'text-gray-700 hover:text-gray-900'
                   }`}
