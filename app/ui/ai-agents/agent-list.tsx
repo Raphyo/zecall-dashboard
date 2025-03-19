@@ -8,14 +8,20 @@ import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 import { EmptyState } from './empty-state';
 
+// Voice display names mapping
+const voiceDisplayNames: { [key: string]: string } = {
+  'guillaume-11labs': 'Guillaume (H)',
+  'lucien-11labs': 'Lucien (H)',
+  'audrey-11labs': 'Audrey (F)',
+  'jessy-11labs': 'Jessy (F)'
+};
+
 interface AIAgent {
   id: string;
   name: string;
-  voice: string;
+  voice_name: string;
   language: string;
-  personality: string;
-  speed: number;
-  call_type: string;
+  background_audio: string;
   knowledge_base_path?: string;
   knowledge_base_type?: string;
   llm_prompt: string;
@@ -35,6 +41,7 @@ export function AgentsList() {
       try {
         if (status === 'authenticated' && session?.user?.email) {
           const fetchedAgents = await getAIAgents(session.user.email);
+          console.log('Fetched agents:', fetchedAgents);
           setAgents(fetchedAgents);
         }
       } catch (error) {
@@ -61,12 +68,21 @@ export function AgentsList() {
         message: 'Agent supprimé avec succès',
         type: 'success'
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting agent:', error);
-      setToast({
-        message: 'Impossible de supprimer l\'agent car il est associé à un ou plusieurs numéros de téléphone',
-        type: 'error'
-      });
+      if (error.message.includes('404')) {
+        setToast({
+          message: 'L\'agent n\'existe plus dans la base de données',
+          type: 'error'
+        });
+        // Remove the non-existent agent from the UI
+        setAgents(agents.filter(agent => agent.id !== agentId));
+      } else {
+        setToast({
+          message: 'Impossible de supprimer l\'agent car il est associé à un ou plusieurs numéros de téléphone',
+          type: 'error'
+        });
+      }
     }
   };
 
@@ -91,33 +107,29 @@ export function AgentsList() {
         >
           <div className="flex justify-between items-start mb-4">
             <h3 className="text-lg font-semibold text-gray-900">{agent.name}</h3>
-            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-              agent.call_type === 'inbound'
-                ? 'bg-green-100 text-green-800'
-                : 'bg-blue-100 text-blue-800'
-            }`}>
-              {agent.call_type === 'inbound' ? 'Entrant' : 'Sortant'}
-            </span>
           </div>
 
           <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 flex-grow">
             <div className="sm:col-span-1">
               <dt className="text-sm font-medium text-gray-500">Voix</dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {agent.voice === 'male' ? 'Masculine' : 'Féminine'}
+                {voiceDisplayNames[agent.voice_name] || agent.voice_name || 'Non définie'}
               </dd>
             </div>
             <div className="sm:col-span-1">
               <dt className="text-sm font-medium text-gray-500">Langue</dt>
-              <dd className="mt-1 text-sm text-gray-900">{agent.language}</dd>
+              <dd className="mt-1 text-sm text-gray-900">
+                {agent.language === 'fr' ? 'Français' : 'English'}
+              </dd>
             </div>
-            <div className="sm:col-span-1">
-              <dt className="text-sm font-medium text-gray-500">Personnalité</dt>
-              <dd className="mt-1 text-sm text-gray-900">{agent.personality}</dd>
-            </div>
-            <div className="sm:col-span-1">
-              <dt className="text-sm font-medium text-gray-500">Vitesse</dt>
-              <dd className="mt-1 text-sm text-gray-900">{agent.speed}x</dd>
+            <div className="sm:col-span-2">
+              <dt className="text-sm font-medium text-gray-500">Son d'ambiance</dt>
+              <dd className="mt-1 text-sm text-gray-900">
+                {agent.background_audio === 'none' && 'Aucun'}
+                {agent.background_audio === 'metro' && 'Métro Parisien'}
+                {agent.background_audio === 'office1' && 'Bureau 1'}
+                {agent.background_audio === 'office2' && 'Bureau 2'}
+              </dd>
             </div>
           </dl>
 

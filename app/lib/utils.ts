@@ -1,4 +1,5 @@
 import { Call } from '@/app/ui/calls/types';
+import { CALL_COST_PER_MINUTE } from './constants';
 
 export const formatDuration = (seconds: number): string => {
   if (!seconds || isNaN(seconds) || !isFinite(seconds)) {
@@ -120,3 +121,12 @@ export function exportCallsToCSV(calls: Call[]) {
   link.click();
   document.body.removeChild(link);
 }
+
+/**
+ * Calculates call cost with ceiling-rounded minutes
+ * e.g., 1 min 1 sec = 2 min charge, 2 min exact = 2 min charge
+ */
+export const calculateCallCost = (durationSeconds: number) => {
+  const durationMinutes = Math.ceil(durationSeconds / 60);
+  return (durationMinutes * CALL_COST_PER_MINUTE).toFixed(2);
+};
