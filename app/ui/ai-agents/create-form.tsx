@@ -15,9 +15,9 @@ const office2Audio = '/api/audio?file=backgrounds%2FOffice-Ambience-2.mp3';
 // Voice samples
 const voiceSamples = [
   { id: 'guillaume-11labs', name: 'Guillaume (H)', gender: 'male', url: '/api/audio?file=voices%2FGuillaume-11labs.mp3' },
-  { id: 'jessy-11labs', name: 'Lucien (H)', gender: 'male', url: '/api/audio?file=voices%2FLucien-11labs.mp3' },
+  { id: 'lucien-11labs', name: 'Lucien (H)', gender: 'male', url: '/api/audio?file=voices%2FLucien-11labs.mp3' },
   { id: 'audrey-11labs', name: 'Audrey (F)', gender: 'female', url: '/api/audio?file=voices%2FAudrey-11labs.mp3' },
-  { id: 'lucien-11labs', name: 'Jessy (F)', gender: 'female', url: '/api/audio?file=voices%2FJessy-11labs.mp3' },
+  { id: 'jessy-11labs', name: 'Jessy (F)', gender: 'female', url: '/api/audio?file=voices%2FJessy-11labs.mp3' },
 ];
 
 export function CreateAIAgentForm() {
@@ -26,7 +26,7 @@ export function CreateAIAgentForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agent, setAgent] = useState({
     name: '',
-    voice: 'Guillaume',
+    voice: 'guillaume-11labs',
     backgroundAudio: 'none',
     language: 'fr-FR',
     knowledgeBase: null as File | null,
@@ -147,6 +147,7 @@ export function CreateAIAgentForm() {
         formData.append('backgroundAudio', agent.backgroundAudio);
         formData.append('language', agent.language);
         formData.append('llmPrompt', agent.llmPrompt);
+        formData.append('user_id', session?.user?.email || '');
 
         if (agent.knowledgeBase) {
             formData.append('knowledgeBase', agent.knowledgeBase);
