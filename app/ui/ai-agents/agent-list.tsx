@@ -8,6 +8,14 @@ import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 import { EmptyState } from './empty-state';
 
+// Voice display names mapping
+const voiceDisplayNames: { [key: string]: string } = {
+  'guillaume-11labs': 'Guillaume (H)',
+  'lucien-11labs': 'Lucien (H)',
+  'audrey-11labs': 'Audrey (F)',
+  'jessy-11labs': 'Jessy (F)'
+};
+
 interface AIAgent {
   id: string;
   name: string;
@@ -95,7 +103,7 @@ export function AgentsList() {
             <div className="sm:col-span-1">
               <dt className="text-sm font-medium text-gray-500">Voix</dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {agent.voice}
+                {voiceDisplayNames[agent.voice] || agent.voice}
               </dd>
             </div>
             <div className="sm:col-span-1">
