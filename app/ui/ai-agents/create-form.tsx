@@ -143,7 +143,7 @@ export function CreateAIAgentForm() {
         const formData = new FormData();
         // Log form data being sent
         formData.append('name', agent.name);
-        formData.append('voice', agent.voice);
+        formData.append('voice_name', agent.voice);
         formData.append('backgroundAudio', agent.backgroundAudio);
         formData.append('language', agent.language);
         formData.append('llmPrompt', agent.llmPrompt);
@@ -154,7 +154,7 @@ export function CreateAIAgentForm() {
 
         console.log('Form data prepared:', {
             name: agent.name,
-            voice: agent.voice,
+            voice_name: agent.voice,
             backgroundAudio: agent.backgroundAudio,
             language: agent.language,
             hasFile: !!agent.knowledgeBase
