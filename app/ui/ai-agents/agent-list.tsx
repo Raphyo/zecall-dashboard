@@ -19,7 +19,7 @@ const voiceDisplayNames: { [key: string]: string } = {
 interface AIAgent {
   id: string;
   name: string;
-  voice: string;
+  voice_name: string;
   language: string;
   background_audio: string;
   knowledge_base_path?: string;
@@ -41,6 +41,7 @@ export function AgentsList() {
       try {
         if (status === 'authenticated' && session?.user?.email) {
           const fetchedAgents = await getAIAgents(session.user.email);
+          console.log('Fetched agents:', fetchedAgents);
           setAgents(fetchedAgents);
         }
       } catch (error) {
@@ -103,7 +104,7 @@ export function AgentsList() {
             <div className="sm:col-span-1">
               <dt className="text-sm font-medium text-gray-500">Voix</dt>
               <dd className="mt-1 text-sm text-gray-900">
-                {voiceDisplayNames[agent.voice] || agent.voice}
+                {voiceDisplayNames[agent.voice_name] || agent.voice_name || 'Non définie'}
               </dd>
             </div>
             <div className="sm:col-span-1">
