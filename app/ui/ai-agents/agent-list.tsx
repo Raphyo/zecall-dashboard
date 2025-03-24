@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { PencilIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { PencilIcon, TrashIcon, PlusIcon, PhoneIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { getAIAgents, deleteAIAgent } from '@/app/lib/api';
 import { Toast } from '../toast';
@@ -29,12 +29,18 @@ interface AIAgent {
   user_id: string;
 }
 
+// Add environment-based URL configuration
+const ZECALL_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://zecall-stg.fly.dev'
+  : 'https://zecall-dev.fly.dev';
+
 export function AgentsList() {
   const router = useRouter();
   const [agents, setAgents] = useState<AIAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const { data: session, status } = useSession();
+  const [isCallLoading, setIsCallLoading] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchAgents = async () => {
@@ -86,6 +92,66 @@ export function AgentsList() {
           type: 'error'
         });
       }
+    }
+  };
+
+  const handleWebCall = async (agentId: string) => {
+    try {
+      // Request microphone permission
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop()); // Stop the stream after permission
+
+      setIsCallLoading(agentId);
+      
+      // Find the agent details
+      const agent = agents.find(a => a.id === agentId);
+      if (!agent) {
+        throw new Error('Agent not found');
+      }
+
+      // Create FormData
+      const formData = new FormData();
+      formData.append('CallSid', 'web-' + Math.random().toString(36).substring(7));
+
+      // Create URL with query parameters
+      const url = new URL(`${ZECALL_URL}/voice-webhook`);
+      url.searchParams.append('ai_provider', 'pipecat_webrtc');
+      url.searchParams.append('agent_id', agentId);
+
+
+      console.log('Initiating call to:', url.toString());
+
+      const response = await fetch(url.toString(), {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to initiate call');
+      }
+
+      const data = await response.json();
+      setToast({
+        message: 'Appel initié avec succès',
+        type: 'success'
+      });
+
+    } catch (error: any) {
+      console.error('Error initiating web call:', error);
+      if (error.name === 'NotAllowedError') {
+        setToast({
+          message: 'Veuillez autoriser l\'accès au microphone pour passer un appel',
+          type: 'error'
+        });
+      } else {
+        setToast({
+          message: error.message || 'Erreur lors de l\'initiation de l\'appel',
+          type: 'error'
+        });
+      }
+    } finally {
+      setIsCallLoading(null);
     }
   };
 
@@ -149,6 +215,20 @@ export function AgentsList() {
               className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200"
             >
               <TrashIcon className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => handleWebCall(agent.id)}
+              disabled={isCallLoading === agent.id}
+              className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-green-700 bg-green-100 hover:bg-green-200 disabled:opacity-50"
+            >
+              {isCallLoading === agent.id ? (
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                <PhoneIcon className="h-4 w-4" />
+              )}
             </button>
           </div>
         </div>
