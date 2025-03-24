@@ -29,10 +29,6 @@ interface AIAgent {
   user_id: string;
 }
 
-// Add environment-based URL configuration
-const ZECALL_URL = process.env.NODE_ENV === 'production' 
-  ? 'https://zecall-stg.fly.dev'
-  : 'https://zecall-dev.fly.dev';
 
 export function AgentsList() {
   const router = useRouter();
@@ -114,7 +110,7 @@ export function AgentsList() {
       formData.append('CallSid', 'web-' + Math.random().toString(36).substring(7));
 
       // Create URL with query parameters
-      const url = new URL(`${ZECALL_URL}/voice-webhook`);
+      const url = new URL(`${process.env.NEXT_PUBLIC_ORCHESTRATOR_SERVICE_URL}/voice-webhook`);
       url.searchParams.append('ai_provider', 'pipecat_webrtc');
       url.searchParams.append('agent_id', agentId);
 
