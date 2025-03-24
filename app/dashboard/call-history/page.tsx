@@ -42,7 +42,7 @@ function CallHistoryContent() {
     position: { x: number; y: number }; 
     colorClass?: string 
   } | null>(null);
-  const REFRESH_INTERVAL = 10000; // Refresh every 10 seconds
+  const REFRESH_INTERVAL = 60000; // Refresh every 60 seconds
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Add a ref to track if we're on a touch device
@@ -56,12 +56,14 @@ function CallHistoryContent() {
 
   const loadCalls = async (isRefresh = false) => {
     try {
-      // Only show loading state on initial load
       if (!isRefresh) {
         setIsLoading(true);
       }
 
-      const fetchedCalls = await getCalls(session?.user?.email, campaignId);
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+      const fetchedCalls = await getCalls(session.user.id, campaignId);
       setCalls(fetchedCalls);
       
       // Reapply current filters after loading new data
@@ -296,7 +298,10 @@ function CallHistoryContent() {
     if (!confirm(`Êtes-vous sûr de vouloir supprimer ${ids.length > 1 ? 'ces appels' : 'cet appel'} ?`)) return;
     setIsDeletingCalls(true);
     try {
-      await deleteCall(ids, session?.user?.email);
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+      await deleteCall(ids, session.user.id);
       setSelectedCalls([]);
       await loadCalls(); // Refresh the list
       setToast({

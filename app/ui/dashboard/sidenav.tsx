@@ -20,7 +20,7 @@ export default function SideNav() {
   const [rechargeAmount, setRechargeAmount] = useState<string>('15');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const refreshIntervalRef = useRef<NodeJS.Timeout>();
-  const REFRESH_INTERVAL = 10000; // Match the 10-second refresh interval
+  const REFRESH_INTERVAL = 60000; // Match the 60-second refresh interval
 
   const fetchCredits = async (isRefresh = false) => {
     try {
@@ -40,21 +40,24 @@ export default function SideNav() {
   };
 
   useEffect(() => {
-    // Initial fetch
-    fetchCredits(false);
+    // Only fetch if session is available
+    if (session) {
+      // Initial fetch
+      fetchCredits(false);
 
-    // Set up interval for periodic refresh
-    refreshIntervalRef.current = setInterval(() => {
-      fetchCredits(true);
-    }, REFRESH_INTERVAL);
+      // Set up interval for periodic refresh
+      refreshIntervalRef.current = setInterval(() => {
+        fetchCredits(true);
+      }, REFRESH_INTERVAL);
 
-    // Cleanup function
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
-  }, []);
+      // Cleanup function
+      return () => {
+        if (refreshIntervalRef.current) {
+          clearInterval(refreshIntervalRef.current);
+        }
+      };
+    }
+  }, [session]); // Add session as a dependency
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;

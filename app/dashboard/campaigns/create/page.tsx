@@ -5,7 +5,6 @@ import { DocumentIcon, PhoneIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { getPhoneNumbers, createCampaign, type PhoneNumber } from '@/app/lib/api';
 import { useSession } from 'next-auth/react';
-import { getUserIdFromEmail } from '@/app/lib/user-mapping';
 import { toast, Toaster } from 'react-hot-toast';
 
 interface CampaignForm {
@@ -42,8 +41,11 @@ export default function CreateCampaignPage() {
     try {
       setIsLoadingPhones(true);
       setPhoneError(null);
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
       console.log('Fetching phone numbers...');
-      const numbers = await getPhoneNumbers(session?.user?.email);
+      const numbers = await getPhoneNumbers(session.user.id);
       console.log('Received phone numbers:', numbers);
       setPhoneNumbers(numbers.filter(n => n.status === 'active'));
     } catch (err) {
@@ -124,9 +126,8 @@ export default function CreateCampaignPage() {
       // Set status based on submission type
       const status = selectedDate ? 'planifiée' : 'en-cours';
       apiFormData.append('status', status);
-      const userId = getUserIdFromEmail(session?.user?.email);
-      if (userId) {
-        apiFormData.append('user_id', userId);
+      if (session?.user?.id) {
+        apiFormData.append('user_id', session.user.id);
       }
       if (selectedDate) {
         apiFormData.append('scheduled_date', selectedDate);
@@ -157,9 +158,8 @@ export default function CreateCampaignPage() {
       apiFormData.append('phone_number_id', campaign.phoneNumberId);
       apiFormData.append('max_retries', campaign.max_retries.toString());
       apiFormData.append('status', 'brouillon');
-      const userId = getUserIdFromEmail(session?.user?.email);
-      if (userId) {
-        apiFormData.append('user_id', userId);
+      if (session?.user?.id) {
+        apiFormData.append('user_id', session.user.id);
       }
 
       await createCampaign(apiFormData);

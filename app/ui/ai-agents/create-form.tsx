@@ -140,6 +140,14 @@ export function CreateAIAgentForm() {
     console.log('Starting form submission...');
 
     try {
+        if (!session?.user?.id) {
+            setToast({
+                message: 'Vous devez être connecté pour créer un agent',
+                type: 'error'
+            });
+            return;
+        }
+
         const formData = new FormData();
         // Log form data being sent
         formData.append('name', agent.name);
@@ -147,7 +155,6 @@ export function CreateAIAgentForm() {
         formData.append('backgroundAudio', agent.backgroundAudio);
         formData.append('language', agent.language);
         formData.append('llmPrompt', agent.llmPrompt);
-        formData.append('user_id', session?.user?.email || '');
 
         if (agent.knowledgeBase) {
             formData.append('knowledgeBase', agent.knowledgeBase);
@@ -161,7 +168,7 @@ export function CreateAIAgentForm() {
             hasFile: !!agent.knowledgeBase
         });
 
-        await createAIAgent(formData, session?.user?.email);
+        await createAIAgent(formData, session.user.id);
         router.push('/dashboard/ai-agents');
     } catch (error) {
         console.error('Form submission error:', error);
@@ -170,7 +177,7 @@ export function CreateAIAgentForm() {
             type: 'error'
         });
     } finally {
-      setIsSubmitting(false);
+        setIsSubmitting(false);
     }
   };
 

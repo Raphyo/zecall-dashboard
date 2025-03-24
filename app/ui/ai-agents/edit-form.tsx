@@ -7,7 +7,6 @@ import { getAIAgents, updateAIAgent, deleteAIAgentFile } from '@/app/lib/api';
 import { ORCHESTRATOR_URL } from '@/app/lib/api';
 import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
-import { getUserIdFromEmail } from '@/app/lib/user-mapping';
 
 // Import audio files
 const metroAudio = '/api/audio?file=Almost-Empty-Metro-Station-in-Paris.mp3';
@@ -68,8 +67,8 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
   useEffect(() => {
     const fetchAgent = async () => {
       try {
-        if (!session?.user?.email) return;
-        const agents = await getAIAgents(session.user.email);
+        if (!session?.user?.id) return;
+        const agents = await getAIAgents(session.user.id);
         const currentAgent = agents.find((a: AIAgent) => a.id === agentId);
         if (currentAgent) {
           setAgent({
@@ -97,7 +96,7 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
     };
 
     fetchAgent();
-  }, [agentId, session?.user?.email]);
+  }, [agentId, session?.user?.id]);
 
   const handlePlayPreview = async (soundId: string, url: string | null) => {
     if (!url) return;
@@ -198,13 +197,10 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
       formData.append('llmPrompt', agent.llmPrompt);
       formData.append('backgroundAudio', agent.backgroundAudio);
 
-      const userId = getUserIdFromEmail(session?.user?.email);
-      console.log('User ID from email:', userId);
-      
-      if (!userId) {
-        throw new Error('User not authenticated');
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
       }
-      formData.append('userId', userId);
+      formData.append('userId', session.user.id);
 
       if (agent.knowledgeBase) {
         console.log('Adding knowledge base file:', agent.knowledgeBase.name);
@@ -263,8 +259,8 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
 
   const handleDeleteFile = async () => {
     try {
-      if (!session?.user?.email) return;
-      await deleteAIAgentFile(agentId, session.user.email);
+      if (!session?.user?.id) return;
+      await deleteAIAgentFile(agentId, session.user.id);
       setAgent(prev => ({ ...prev, knowledgeBase: null }));
       setSelectedFileName('');
       const input = document.getElementById('knowledgeBase') as HTMLInputElement;

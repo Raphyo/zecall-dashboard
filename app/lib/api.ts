@@ -1,7 +1,6 @@
 import { auth } from '@/auth';
 import { headers } from 'next/headers';
 import { Call } from '../ui/calls/types';
-import { getUserIdFromEmail } from './user-mapping';
 
 type CampaignStatus = 'en-cours' | 'planifiée' | 'terminée' | 'brouillon';
 
@@ -58,27 +57,27 @@ const handleResponse = async (response: Response) => {
     return response.json();
 };
 
-// Update the getCurrentUserId function to accept email
-function getCurrentUserId(email: string | null | undefined): string {
-  const userId = getUserIdFromEmail(email);
+// Simplified getCurrentUserId function without email parameter
+async function getCurrentUserId(): Promise<string> {
+  const session = await auth();
   
-  if (!userId) {
-    throw new Error('User not authenticated or email not found');
+  if (!session?.user?.id) {
+    throw new Error('User not authenticated or ID not found');
   }
   
-  return userId;
+  return session.user.id;
 }
 
-export async function createAIAgent(formData: FormData, email: string | null | undefined): Promise<AIAgent> {
+export async function createAIAgent(formData: FormData, userId: string): Promise<AIAgent> {
     try {
-        const userId = getCurrentUserId(email);
         // Clone the FormData and append the user_id
         const formDataWithUser = new FormData();
         for (const [key, value] of formData.entries()) {
+            console.log(`${key}:`, value instanceof File ? `File: ${value.name}` : value);
             formDataWithUser.append(key, value);
         }
         formDataWithUser.append('user_id', userId);
-
+        console.log('Form data with user:', userId);
         const response = await fetch(`${ANALYTICS_URL}/api/ai-agents`, {
             method: 'POST',
             body: formDataWithUser,
@@ -98,10 +97,8 @@ export async function createAIAgent(formData: FormData, email: string | null | u
     }
 }
 
-// Update the API functions to accept email
-export async function getAIAgents(email: string | null | undefined) {
+export async function getAIAgents(userId: string) {
     try {
-        const userId = getCurrentUserId(email);
         const response = await fetch(`${ANALYTICS_URL}/api/ai-agents?user_id=${userId}`, {
             method: 'GET',
             headers: {
@@ -163,9 +160,8 @@ export async function updateAIAgent(agentId: string, formData: FormData) {
   }
 }
 
-export async function deleteAIAgent(agentId: string, email: string | null | undefined) {
+export async function deleteAIAgent(agentId: string, userId: string) {
     try {
-        const userId = getCurrentUserId(email);
         const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}?user_id=${userId}`, {
             method: 'DELETE',
             headers: {
@@ -183,9 +179,7 @@ export async function deleteAIAgent(agentId: string, email: string | null | unde
     }
 }
 
-export async function deleteAIAgentFile(agentId: string, email: string | null | undefined): Promise<void> {
-    const userId = getCurrentUserId(email);
-
+export async function deleteAIAgentFile(agentId: string, userId: string): Promise<void> {
     try {
         const response = await fetch(
             `${ANALYTICS_URL}/api/ai-agents/${agentId}/file?user_id=${userId}`,
@@ -221,9 +215,8 @@ export async function createCampaign(formData: FormData): Promise<Campaign> {
     }
 }
 
-export async function getCampaigns(email: string | null | undefined): Promise<Campaign[]> {
+export async function getCampaigns(userId: string): Promise<Campaign[]> {
     try {
-        const userId = getCurrentUserId(email);
         const response = await fetch(`${ANALYTICS_URL}/api/campaigns?user_id=${userId}&include_status=true`, {
             headers: {
                 'Accept': 'application/json',
@@ -240,10 +233,8 @@ export async function getCampaigns(email: string | null | undefined): Promise<Ca
     }
 }
 
-// Similarly update other functions that need user ID
-export async function getPhoneNumbers(email: string | null | undefined): Promise<PhoneNumber[]> {
+export async function getPhoneNumbers(userId: string): Promise<PhoneNumber[]> {
     try {
-        const userId = getCurrentUserId(email);
         const response = await fetch(`${ANALYTICS_URL}/api/phone-numbers?user_id=${userId}`, {
             headers: {
                 'Accept': 'application/json',
@@ -297,9 +288,8 @@ export async function duplicateCampaign(id: string): Promise<Campaign> {
     }
 }
 
-export async function getCalls(email: string | null | undefined, campaignId?: string | null): Promise<Call[]> {
+export async function getCalls(userId: string, campaignId?: string | null): Promise<Call[]> {
     try {
-        const userId = getCurrentUserId(email);
         const url = `${ANALYTICS_URL}/api/calls?${new URLSearchParams({
             user_id: userId,
             ...(campaignId ? { campaign_id: campaignId } : {})
@@ -332,9 +322,8 @@ export async function updateCampaignStatus(campaignId: string, status: string) {
     return response.json();
 }
 
-export async function deleteCall(callIds: string[], email: string | null | undefined): Promise<void> {
+export async function deleteCall(callIds: string[], userId: string): Promise<void> {
     try {
-        const userId = getCurrentUserId(email);
         const response = await fetch(`${ANALYTICS_URL}/api/calls/bulk-delete?user_id=${userId}`, {
             method: 'DELETE',
             headers: {

@@ -39,8 +39,8 @@ export function AgentsList() {
   useEffect(() => {
     const fetchAgents = async () => {
       try {
-        if (status === 'authenticated' && session?.user?.email) {
-          const fetchedAgents = await getAIAgents(session.user.email);
+        if (status === 'authenticated' && session?.user?.id) {
+          const fetchedAgents = await getAIAgents(session.user.id);
           console.log('Fetched agents:', fetchedAgents);
           setAgents(fetchedAgents);
         }
@@ -62,7 +62,10 @@ export function AgentsList() {
     }
 
     try {
-      await deleteAIAgent(agentId, session?.user?.email);
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+      await deleteAIAgent(agentId, session.user.id);
       setAgents(agents.filter(agent => agent.id !== agentId));
       setToast({
         message: 'Agent supprimé avec succès',

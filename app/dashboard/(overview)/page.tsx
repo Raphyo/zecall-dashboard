@@ -45,7 +45,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const refreshIntervalRef = useRef<NodeJS.Timeout>();
-  const REFRESH_INTERVAL = 10000; // Refresh every 10 seconds to match call history page
+  const REFRESH_INTERVAL = 60000; // Refresh every 60 seconds to match call history page
   const [stats, setStats] = useState({
     inboundCalls: 0,
     outboundCalls: 0,

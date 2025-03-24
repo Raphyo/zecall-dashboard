@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { getUserIdFromEmail } from '@/app/lib/user-mapping';
 import { ANALYTICS_URL } from '@/app/lib/api';
 import { CALL_COST_PER_MINUTE } from '@/app/lib/constants';
 
@@ -8,18 +7,10 @@ export async function GET(request: Request) {
   try {
     const session = await auth();
     
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
-      );
-    }
-
-    const userId = await getUserIdFromEmail(session.user.email);
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
       );
     }
 
@@ -38,7 +29,7 @@ export async function GET(request: Request) {
     const estimatedCost = durationMinutes * CALL_COST_PER_MINUTE;
 
     // Get current balance
-    const response = await fetch(`${ANALYTICS_URL}/api/credits?user_id=${userId}`);
+    const response = await fetch(`${ANALYTICS_URL}/api/credits?user_id=${session.user.id}`);
     const data = await response.json();
 
     if (!response.ok) {
