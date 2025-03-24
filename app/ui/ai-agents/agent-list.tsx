@@ -108,6 +108,8 @@ export function AgentsList() {
       // Create FormData
       const formData = new FormData();
       formData.append('CallSid', 'web-' + Math.random().toString(36).substring(7));
+      formData.append('From', 'web-caller');
+      formData.append('To', 'web-agent');
 
       // Create URL with query parameters
       const url = new URL(`${process.env.NEXT_PUBLIC_ORCHESTRATOR_SERVICE_URL}/voice-webhook`);
