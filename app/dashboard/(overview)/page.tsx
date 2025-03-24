@@ -70,7 +70,7 @@ export default function DashboardPage() {
   }, [status]);
 
   const loadDashboardData = async (isRefresh = false) => {
-    if (status !== 'authenticated' || !session?.user?.email) return;
+    if (status !== 'authenticated' || !session?.user?.id) return;
     
     try {
       // Only show loading state on initial load
@@ -78,8 +78,8 @@ export default function DashboardPage() {
         setIsLoading(true);
       }
 
-      const calls = await getCalls(session.user.email);
-      const campaigns = await getCampaigns(session.user.email);
+      const calls = await getCalls(session.user.id);
+      const campaigns = await getCampaigns(session.user.id);
       
       // Get recent calls (last 10)
       const recent = calls
@@ -220,7 +220,7 @@ export default function DashboardPage() {
         clearInterval(refreshIntervalRef.current);
       }
     };
-  }, [session?.user?.email, status]);
+  }, [session?.user?.id, status]);
 
   // Show loading state
   if (status === 'loading' || isLoading) {
