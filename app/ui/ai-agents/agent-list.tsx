@@ -113,7 +113,7 @@ export function AgentsList() {
 
       // Create URL with query parameters
       const url = new URL('/api/voice-webhook', window.location.origin);
-      url.searchParams.append('ai_provider', 'pipecat_webrtc');
+      url.searchParams.append('ai_provider', 'daily_webrtc');
       url.searchParams.append('agent_id', agentId);
 
       console.log('Initiating call to:', url.toString());
