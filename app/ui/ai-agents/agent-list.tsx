@@ -107,7 +107,6 @@ export function AgentsList() {
 
       // Create FormData
       const formData = new FormData();
-      // formData.append('CallSid', 'web-' + Math.random().toString(36).substring(7));
       formData.append('From', 'web-caller');
       formData.append('To', 'web-agent');
 
@@ -120,15 +119,32 @@ export function AgentsList() {
 
       const response = await fetch(url.toString(), {
         method: 'POST',
-        body: formData
+        body: formData,
+        headers: {
+          'Accept': 'application/json',
+        }
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to initiate call');
+        const errorText = await response.text();
+        let errorMessage;
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorText;
+        } catch {
+          errorMessage = errorText;
+        }
+        console.error('Call initiation failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        throw new Error(errorMessage || 'Failed to initiate call');
       }
 
       const data = await response.json();
+      console.log('Call initiated successfully:', data);
+      
       setToast({
         message: 'Appel initié avec succès',
         type: 'success'
