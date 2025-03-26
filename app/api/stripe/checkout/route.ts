@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import Stripe from 'stripe';
 
-// Make sure we're using test mode
-const isTestMode = process.env.NODE_ENV === 'development';
-console.log('🔑 Stripe mode:', isTestMode ? 'test' : 'live');
+const stripeKey = process.env.STRIPE_RESTRICTED_KEY!;
+const isTestMode = stripeKey.startsWith('rk_test_');
+console.log('🔑 Stripe webhook mode:', isTestMode ? 'test' : 'live');
 
 // Log the API key prefix to help debug (safely)
 const apiKeyPrefix = process.env.STRIPE_RESTRICTED_KEY?.startsWith('rk_test_') ? 'rk_test_' : 'rk_live_';
