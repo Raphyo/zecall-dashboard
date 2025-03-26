@@ -7,16 +7,6 @@ import { ANALYTICS_URL } from '@/app/lib/api';
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
-// Skip middleware authentication for this route
-export const config = {
-  matcher: {
-    source: '/api/stripe/webhook',
-    missing: [
-      { type: 'header', key: 'x-middleware-skip' }
-    ]
-  }
-};
-
 // Check test mode based on Stripe key prefix
 const stripeKey = process.env.STRIPE_RESTRICTED_KEY!;
 const isTestMode = stripeKey.startsWith('rk_test_');
