@@ -3,16 +3,19 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { ANALYTICS_URL } from '@/app/lib/api';
 
-// Make the webhook endpoint public
+// Make the webhook endpoint public and configure for edge runtime
+export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+// Skip middleware authentication for this route
 export const config = {
-  api: {
-    bodyParser: false,
-  },
-  runtime: 'edge',
-  unstable_allowDynamic: [
-    '**/node_modules/lodash/**', // use a glob to allow anything in the function-bind 3rd party module
-  ],
-}
+  matcher: {
+    source: '/api/stripe/webhook',
+    missing: [
+      { type: 'header', key: 'x-middleware-skip' }
+    ]
+  }
+};
 
 // Check test mode based on Stripe key prefix
 const stripeKey = process.env.STRIPE_RESTRICTED_KEY!;
@@ -39,7 +42,14 @@ export async function POST(request: Request) {
     console.error('❌ No Stripe signature found in webhook request');
     return NextResponse.json(
       { error: 'No signature found' },
-      { status: 400 }
+      { 
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+        }
+      }
     );
   }
 
@@ -53,7 +63,14 @@ export async function POST(request: Request) {
     console.error('❌ Webhook signature verification failed:', error.message);
     return NextResponse.json(
       { error: 'Webhook signature verification failed' },
-      { status: 400 }
+      { 
+        status: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+        }
+      }
     );
   }
 
@@ -123,7 +140,16 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ received: true });
+    return NextResponse.json(
+      { received: true },
+      {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+        }
+      }
+    );
   } catch (error) {
     console.error('❌ Webhook handler failed:', error);
     return NextResponse.json(
