@@ -2,17 +2,17 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import Stripe from 'stripe';
 
-// Check if we're using test mode based on the API key prefix
-const isTestMode = process.env.STRIPE_RESTRICTED_KEY?.startsWith('rk_test_');
+// Make sure we're using test mode
+const isTestMode = process.env.NODE_ENV === 'development';
 console.log('🔑 Stripe mode:', isTestMode ? 'test' : 'live');
 
 // Log the API key prefix to help debug (safely)
 const apiKeyPrefix = process.env.STRIPE_RESTRICTED_KEY?.startsWith('rk_test_') ? 'rk_test_' : 'rk_live_';
 console.log('🔑 API key prefix:', apiKeyPrefix);
 
-// Warn if using live key in test environment
+// Warn if using live key in development
 if (isTestMode && apiKeyPrefix === 'rk_live_') {
-  console.warn('⚠️ Warning: Using live API key with test mode!');
+  console.warn('⚠️ Warning: Using live API key in development mode!');
 }
 
 const stripe = new Stripe(process.env.STRIPE_RESTRICTED_KEY!, {
