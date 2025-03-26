@@ -3,6 +3,17 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { ANALYTICS_URL } from '@/app/lib/api';
 
+// Make the webhook endpoint public
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+  runtime: 'edge',
+  unstable_allowDynamic: [
+    '**/node_modules/lodash/**', // use a glob to allow anything in the function-bind 3rd party module
+  ],
+}
+
 // Check test mode based on Stripe key prefix
 const stripeKey = process.env.STRIPE_RESTRICTED_KEY!;
 const isTestMode = stripeKey.startsWith('rk_test_');
@@ -117,7 +128,25 @@ export async function POST(request: Request) {
     console.error('❌ Webhook handler failed:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Webhook handler failed' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+        }
+      }
     );
   }
+}
+
+// Add OPTIONS handler for CORS preflight
+export async function OPTIONS() {
+  return NextResponse.json({}, {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+    }
+  });
 } 
