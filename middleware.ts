@@ -8,14 +8,12 @@ export default NextAuth(authConfig).auth;
 export const config = {
   // https://nextjs.org/docs/app/building-your-application/routing/middleware#matcher
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api/stripe/webhook (webhook endpoint)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    '/((?!api/stripe/webhook|_next/static|_next/image|favicon.ico).*)',
+    // Protect all routes except:
+    // - api/stripe/webhook (webhook endpoint)
+    // - api/auth (auth endpoints)
+    // - _next (Next.js internals)
+    // - static files
+    '/((?!api/stripe/webhook|api/auth|_next/static|_next/image|favicon.ico).*)',
   ],
 };
 
