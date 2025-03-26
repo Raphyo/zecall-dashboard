@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { ANALYTICS_URL } from '@/app/lib/api';
 
+// Mark this route as not requiring authentication
+export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
+
 // Check if we're using test mode based on the API key prefix
 const isTestMode = process.env.STRIPE_RESTRICTED_KEY?.startsWith('rk_test_');
 console.log('🔑 Stripe webhook mode:', isTestMode ? 'test' : 'live');
