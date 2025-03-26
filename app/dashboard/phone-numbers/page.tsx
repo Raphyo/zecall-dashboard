@@ -86,13 +86,15 @@ export default function PhoneNumbersPage() {
       // Process all pending changes
       for (const [phoneNumberId, agentId] of Object.entries(pendingChanges)) {
         try {
-          const formData = new FormData();
-          formData.append('agent_id', agentId);
-          formData.append('user_id', session.user.id);
-
-          const response = await fetch(`${ANALYTICS_URL}/api/phone-numbers/${phoneNumberId}/agent`, {
+          const response = await fetch(`${ANALYTICS_URL}/api/phone-numbers/${phoneNumberId}/agent?user_id=${session.user.id}`, {
             method: 'PUT',
-            body: formData
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: JSON.stringify({
+              agent_id: agentId === 'none' ? null : agentId
+            })
           });
 
           if (!response.ok) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline';
+import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { getAIAgents, updateAIAgent, deleteAIAgentFile } from '@/app/lib/api';
 import { ORCHESTRATOR_URL } from '@/app/lib/api';
@@ -30,6 +30,8 @@ interface AIAgent {
   knowledge_base_path?: string;
   knowledge_base_type?: string;
   llm_prompt: string;
+  allow_interruptions: boolean;
+  ai_starts_conversation: boolean;
   created_at: string;
   user_id: string;
 }
@@ -46,7 +48,9 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
     language: 'fr-FR',
     knowledgeBase: null as File | null,
     knowledgeBaseType: 'pdf',
-    llmPrompt: ''
+    llmPrompt: '',
+    allowInterruptions: false,
+    aiStartsConversation: false
   });
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
@@ -78,7 +82,9 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
             language: currentAgent.language,
             knowledgeBase: null,
             knowledgeBaseType: currentAgent.knowledge_base_type || 'pdf',
-            llmPrompt: currentAgent.llm_prompt || ''
+            llmPrompt: currentAgent.llm_prompt || '',
+            allowInterruptions: currentAgent.allow_interruptions || false,
+            aiStartsConversation: currentAgent.ai_starts_conversation || false
           });
           if (currentAgent.knowledge_base_path) {
             setSelectedFileName(currentAgent.knowledge_base_path.split('/').pop() || '');
@@ -196,6 +202,8 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
       formData.append('language', agent.language);
       formData.append('llmPrompt', agent.llmPrompt);
       formData.append('backgroundAudio', agent.backgroundAudio);
+      formData.append('allowInterruptions', agent.allowInterruptions.toString());
+      formData.append('aiStartsConversation', agent.aiStartsConversation.toString());
 
       if (!session?.user?.id) {
         throw new Error('User ID not found');
@@ -497,6 +505,52 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
               placeholder="Entrez votre prompt ici..."
               required
             />
+          </div>
+        </div>
+
+        {/* Conversation Settings Section */}
+        <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center mb-6">
+            <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Paramètres de conversation</h2>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center group relative">
+              <input
+                type="checkbox"
+                id="allowInterruptions"
+                checked={agent.allowInterruptions}
+                onChange={(e) => setAgent(prev => ({ ...prev, allowInterruptions: e.target.checked }))}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="allowInterruptions" className="ml-2 block text-sm text-gray-900">
+                Avec interruptions
+              </label>
+              <div className="relative inline-block ml-2">
+                <InformationCircleIcon className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block w-64 bg-gray-900 text-white text-sm rounded-lg p-2 shadow-lg">
+                  <div className="relative">
+                    <div className="text-xs">
+                      Lorsque cette option est activée, l'utilisateur peut interrompre l'agent IA pendant qu'il parle. 
+                      Cela permet une conversation plus naturelle mais peut affecter la cohérence des réponses.
+                    </div>
+                    <div className="absolute w-3 h-3 bg-gray-900 transform rotate-45 left-1/2 -translate-x-1/2 -bottom-1.5"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="aiStartsConversation"
+                checked={agent.aiStartsConversation}
+                onChange={(e) => setAgent(prev => ({ ...prev, aiStartsConversation: e.target.checked }))}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="aiStartsConversation" className="ml-2 block text-sm text-gray-900">
+                L'IA commence la conversation
+              </label>
+            </div>
           </div>
         </div>
       </div>
