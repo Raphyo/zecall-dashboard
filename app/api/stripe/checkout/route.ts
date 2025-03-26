@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       const customer = await stripe.customers.create({
         email: session.user.email,
         metadata: {
-          userId: session.user.email,
+          userId: session.user.id,
         },
       });
       customerId = customer.id;
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?payment=cancelled`,
       metadata: {
         amount: amountInEuros, // Store original amount in euros
-        userId: session.user.email,
+        userId: session.user.id,
       },
     });
 

@@ -3,14 +3,12 @@
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { deleteCall, getCalls, updateCampaignStatus } from '@/app/lib/api';
-import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { TEMP_USER_ID } from '@/app/lib/constants';
+import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import type { Call } from '@/app/ui/calls/types';
-import { AudioPlayer } from '@/app/ui/calls/audio-player';
 import { TranscriptModal } from '@/app/ui/modals/transcript-modal';
 import { Filters, FilterState } from '@/app/ui/calls/filters';
 import { useSession } from 'next-auth/react';
-import { exportCallsToCSV } from '@/app/lib/utils';
+import { exportCallsToCSV, calculateCallCost } from '@/app/lib/utils';
 import { Toast } from '@/app/ui/toast';
 
 function CallHistoryContent() {
@@ -39,11 +37,33 @@ function CallHistoryContent() {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { data: session } = useSession();
+  const [expandedText, setExpandedText] = useState<{ 
+    text: string; 
+    position: { x: number; y: number }; 
+    colorClass?: string 
+  } | null>(null);
+  const REFRESH_INTERVAL = 60000; // Refresh every 60 seconds
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  const loadCalls = async () => {
+  // Add a ref to track if we're on a touch device
+  const isTouchDevice = useRef(false);
+  const refreshIntervalRef = useRef<NodeJS.Timeout>();
+
+  // Detect touch device on mount
+  useEffect(() => {
+    isTouchDevice.current = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  }, []);
+
+  const loadCalls = async (isRefresh = false) => {
     try {
-      setIsLoading(true);
-      const fetchedCalls = await getCalls(session?.user?.email, campaignId);
+      if (!isRefresh) {
+        setIsLoading(true);
+      }
+
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+      const fetchedCalls = await getCalls(session.user.id, campaignId);
       setCalls(fetchedCalls);
       
       // Reapply current filters after loading new data
@@ -94,13 +114,37 @@ function CallHistoryContent() {
     } catch (error) {
       console.error('Error loading calls:', error);
     } finally {
-      setIsLoading(false);
+      if (!isRefresh) {
+        setIsLoading(false);
+      }
+      setIsInitialLoad(false);
     }
   };
 
+  // Set up auto-refresh
   useEffect(() => {
-    loadCalls();
-  }, [session, campaignId]);
+    // Initial load
+    loadCalls(false);
+
+    // Set up interval for periodic refresh
+    refreshIntervalRef.current = setInterval(() => {
+      loadCalls(true); // Pass true to indicate this is a refresh
+    }, REFRESH_INTERVAL);
+
+    // Cleanup function
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+    };
+  }, [session, campaignId, currentFilters]); // Added currentFilters to dependencies
+
+  // Add a separate effect to handle filter changes
+  useEffect(() => {
+    if (!isInitialLoad) {
+      loadCalls(true);
+    }
+  }, [currentFilters]);
 
   const handlePlayAudio = (url: string, id: string, name: string) => {
     // Find the call to get its duration from the database
@@ -254,7 +298,10 @@ function CallHistoryContent() {
     if (!confirm(`Êtes-vous sûr de vouloir supprimer ${ids.length > 1 ? 'ces appels' : 'cet appel'} ?`)) return;
     setIsDeletingCalls(true);
     try {
-      await deleteCall(ids, session?.user?.email);
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+      await deleteCall(ids, session.user.id);
       setSelectedCalls([]);
       await loadCalls(); // Refresh the list
       setToast({
@@ -302,20 +349,61 @@ function CallHistoryContent() {
     setCurrentTime(newTime);
   };
 
+  // Close expanded text when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (expandedText && !(event.target as Element).closest('.expanded-text-popup')) {
+        setExpandedText(null);
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [expandedText]);
+
+  const handleTextExpand = (text: string, event: React.MouseEvent, colorClass?: string) => {
+    event.preventDefault(); // Prevent default to handle both click and touch
+    event.stopPropagation();
+    
+    // If already showing this text, close it
+    if (expandedText?.text === text) {
+      setExpandedText(null);
+      return;
+    }
+    
+    // Calculate position based on click/touch location
+    const rect = event.currentTarget.getBoundingClientRect();
+    
+    // Get viewport width to handle mobile positioning
+    const viewportWidth = window.innerWidth;
+    
+    // Calculate x position - ensure popup stays within viewport
+    let x = rect.left;
+    
+    // For mobile (small screens), center the popup
+    if (viewportWidth < 640) { // sm breakpoint in Tailwind
+      x = Math.max(20, Math.min(viewportWidth - 220, x)); // Keep 20px from edges minimum
+    } else {
+      // For desktop, keep popup aligned with the clicked element
+      x = Math.max(10, Math.min(viewportWidth - 280, x));
+    }
+    
+    const y = rect.bottom + window.scrollY;
+    
+    setExpandedText({ 
+      text, 
+      position: { x, y },
+      colorClass
+    });
+  };
+
   return (
     <div className="w-full">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Historique des appels</h1>
         <div className="flex items-center gap-4">
-          {selectedCalls.length > 0 && (
-            <button
-              onClick={() => handleDelete(selectedCalls)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-red-600 rounded-md hover:bg-red-700"
-            >
-              <TrashIcon className="w-5 h-5" />
-              Supprimer ({selectedCalls.length})
-            </button>
-          )}
           <button
             onClick={() => exportCallsToCSV(filteredCalls)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
@@ -334,53 +422,45 @@ function CallHistoryContent() {
         </div>
       ) : (
         <div className="mt-8 bg-white rounded-lg shadow overflow-hidden">
-          <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-            <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-              <table className="min-w-full divide-y divide-gray-200">
+          <div className="overflow-x-auto">
+            <div className="inline-block min-w-full py-2 align-middle">
+              <table className="min-w-full divide-y divide-gray-200 table-fixed">
                 <thead>
                   <tr className="bg-gray-50">
-                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">
-                      <input
-                        type="checkbox"
-                        checked={selectedCalls.length === filteredCalls.length && filteredCalls.length > 0}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </th>
-                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">
+                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 w-20">
                       ID Appel
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Appelant
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Destinataire
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Nom
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Email
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-24">
                       Direction
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Catégorie
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Date
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-20">
                       Durée
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-20">
+                      Coût
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-24">
                       Statut
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Campagne
                     </th>
-                    <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-0">
+                    <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-0 w-24">
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -388,14 +468,6 @@ function CallHistoryContent() {
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {filteredCalls.map((call) => (
                     <tr key={call.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
-                        <input
-                          type="checkbox"
-                          checked={selectedCalls.includes(call.id)}
-                          onChange={(e) => handleSelectCall(call.id, e.target.checked)}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                      </td>
                       <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
                         {call.id.substring(0, 7)}
                       </td>
@@ -408,17 +480,37 @@ function CallHistoryContent() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.user_name}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {call.user_email}
-                      </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
-                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getDirectionStyle(call.direction)}`}>
-                          {call.direction}
+                        <span 
+                          className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getDirectionStyle(call.direction)}`}
+                          title={call.direction}
+                        >
+                          <span className="truncate max-w-[100px] block">
+                            {call.direction}
+                          </span>
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
-                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getCategoryStyle(call.call_category)}`}>
-                          {call.call_category}
+                        <span 
+                          className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getCategoryStyle(call.call_category)} cursor-pointer active:opacity-80`}
+                          title={call.call_category}
+                          onClick={(e) => handleTextExpand(call.call_category, e, getCategoryStyle(call.call_category))}
+                          onTouchEnd={(e) => {
+                            // Convert TouchEvent to MouseEvent-like object for our handler
+                            const mouseEvent = {
+                              currentTarget: e.currentTarget,
+                              preventDefault: () => e.preventDefault(),
+                              stopPropagation: () => e.stopPropagation(),
+                              clientX: e.changedTouches[0].clientX,
+                              clientY: e.changedTouches[0].clientY
+                            } as unknown as React.MouseEvent;
+                            
+                            handleTextExpand(call.call_category, mouseEvent, getCategoryStyle(call.call_category));
+                          }}
+                        >
+                          <span className="truncate max-w-[120px] block">
+                            {call.call_category}
+                          </span>
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
@@ -427,13 +519,54 @@ function CallHistoryContent() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {formatDuration(call.duration)}
                       </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        {calculateCallCost(call.duration)}€
+                      </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
-                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getStatusStyle(call.call_status)}`}>
-                          {call.call_status}
+                        <span 
+                          className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getStatusStyle(call.call_status)} cursor-pointer active:opacity-80`}
+                          title={call.call_status}
+                          onClick={(e) => handleTextExpand(call.call_status, e, getStatusStyle(call.call_status))}
+                          onTouchEnd={(e) => {
+                            // Convert TouchEvent to MouseEvent-like object for our handler
+                            const mouseEvent = {
+                              currentTarget: e.currentTarget,
+                              preventDefault: () => e.preventDefault(),
+                              stopPropagation: () => e.stopPropagation(),
+                              clientX: e.changedTouches[0].clientX,
+                              clientY: e.changedTouches[0].clientY
+                            } as unknown as React.MouseEvent;
+                            
+                            handleTextExpand(call.call_status, mouseEvent, getStatusStyle(call.call_status));
+                          }}
+                        >
+                          <span className="truncate max-w-[100px] block">
+                            {call.call_status}
+                          </span>
                         </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {call.campaign_name || '-'}
+                        {call.campaign_name ? (
+                          <span 
+                            className="truncate max-w-[120px] block cursor-pointer active:opacity-80" 
+                            title={call.campaign_name}
+                            onClick={(e) => handleTextExpand(call.campaign_name || '', e)}
+                            onTouchEnd={(e) => {
+                              // Convert TouchEvent to MouseEvent-like object for our handler
+                              const mouseEvent = {
+                                currentTarget: e.currentTarget,
+                                preventDefault: () => e.preventDefault(),
+                                stopPropagation: () => e.stopPropagation(),
+                                clientX: e.changedTouches[0].clientX,
+                                clientY: e.changedTouches[0].clientY
+                              } as unknown as React.MouseEvent;
+                              
+                              handleTextExpand(call.campaign_name || '', mouseEvent);
+                            }}
+                          >
+                            {call.campaign_name}
+                          </span>
+                        ) : '-'}
                       </td>
                       <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium">
                         <div className="flex justify-end gap-2">
@@ -466,15 +599,6 @@ function CallHistoryContent() {
                               title="Voir la transcription"
                             >
                               <DocumentTextIcon className="h-5 w-5" />
-                            </button>
-                          )}
-                          {!selectedCalls.length && (
-                            <button
-                              onClick={() => handleDelete([call.id])}
-                              className="p-1 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors"
-                              title="Supprimer l'appel"
-                            >
-                              <TrashIcon className="h-5 w-5" />
                             </button>
                           )}
                         </div>
@@ -570,6 +694,27 @@ function CallHistoryContent() {
           type={toast.type}
           onClose={() => setToast(null)}
         />
+      )}
+
+      {/* Expanded Text Popup */}
+      {expandedText && (
+        <div 
+          className={`expanded-text-popup fixed z-50 rounded-lg shadow-lg border border-gray-200 p-3 max-w-xs ${expandedText.colorClass || 'bg-white'} sm:max-w-xs max-w-[calc(100vw-40px)]`}
+          style={{ 
+            left: `${expandedText.position.x}px`, 
+            top: `${expandedText.position.y + 10}px` 
+          }}
+        >
+          <div className="flex justify-between items-start">
+            <p className="text-sm break-words pr-6">{expandedText.text}</p>
+            <button 
+              onClick={() => setExpandedText(null)}
+              className="absolute top-2 right-2 text-current opacity-70 hover:opacity-100 p-1"
+            >
+              <XMarkIcon className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

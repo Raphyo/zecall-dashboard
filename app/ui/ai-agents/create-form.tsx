@@ -1,11 +1,24 @@
 'use client';
 
-import { useState } from 'react';
-import { SpeakerWaveIcon, LanguageIcon, UserGroupIcon, DocumentIcon } from '@heroicons/react/24/outline';
+import { useState, useRef, useEffect } from 'react';
+import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { createAIAgent } from '@/app/lib/api';
 import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
+
+// Import audio files
+const metroAudio = '/api/audio?file=backgrounds%2FAlmost-Empty-Metro-Station-in-Paris.mp3';
+const office1Audio = '/api/audio?file=backgrounds%2FOffice-Ambience.mp3';
+const office2Audio = '/api/audio?file=backgrounds%2FOffice-Ambience-2.mp3';
+
+// Voice samples
+const voiceSamples = [
+  { id: 'guillaume-11labs', name: 'Guillaume (H)', gender: 'male', url: '/api/audio?file=voices%2FGuillaume-11labs.mp3' },
+  { id: 'lucien-11labs', name: 'Lucien (H)', gender: 'male', url: '/api/audio?file=voices%2FLucien-11labs.mp3' },
+  { id: 'audrey-11labs', name: 'Audrey (F)', gender: 'female', url: '/api/audio?file=voices%2FAudrey-11labs.mp3' },
+  { id: 'jessy-11labs', name: 'Jessy (F)', gender: 'female', url: '/api/audio?file=voices%2FJessy-11labs.mp3' },
+];
 
 export function CreateAIAgentForm() {
   const router = useRouter();
@@ -13,14 +26,14 @@ export function CreateAIAgentForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agent, setAgent] = useState({
     name: '',
-    voice: 'female',
+    voice: 'guillaume-11labs',
+    backgroundAudio: 'none',
     language: 'fr-FR',
-    personality: 'professional',
-    speed: 1,
-    callType: 'inbound',
     knowledgeBase: null as File | null,
     knowledgeBaseType: 'pdf',
-    llmPrompt: ''
+    llmPrompt: '',
+    allowInterruptions: false,
+    aiStartsConversation: false
   });
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
@@ -28,12 +41,78 @@ export function CreateAIAgentForm() {
     message: string;
     type: 'error' | 'success';
   } | null>(null);
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  const personalities = [
-    { id: 'professional', name: 'Professionnel', description: 'Formel et efficace' },
-    { id: 'friendly', name: 'Amical', description: 'Chaleureux et accessible' },
-    { id: 'casual', name: 'Décontracté', description: 'Naturel et détendu' },
+  const ambientSounds = [
+    { id: 'none', name: 'Aucun', url: null },
+    { id: 'metro', name: 'Métro Parisien', url: metroAudio },
+    { id: 'office1', name: 'Bureau 1', url: office1Audio },
+    { id: 'office2', name: 'Bureau 2', url: office2Audio },
   ];
+
+  const handlePlayPreview = async (soundId: string, url: string | null) => {
+    if (!url) return;
+
+    try {
+      // If currently playing this sound, stop it
+      if (currentlyPlaying === soundId) {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current = null;
+        }
+        setCurrentlyPlaying(null);
+        return;
+      }
+
+      // Stop any currently playing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+
+      // Create new Audio element
+      const audio = new Audio(url);
+      
+      // Set up error handling
+      audio.onerror = () => {
+        setToast({
+          message: 'Erreur lors de la lecture du son',
+          type: 'error'
+        });
+        setCurrentlyPlaying(null);
+        audioRef.current = null;
+      };
+
+      // Add ended event listener
+      audio.addEventListener('ended', () => {
+        setCurrentlyPlaying(null);
+        audioRef.current = null;
+      });
+
+      // Play the audio
+      audioRef.current = audio;
+      await audio.play();
+      setCurrentlyPlaying(soundId);
+    } catch (error) {
+      setToast({
+        message: 'Erreur lors de l\'initialisation du son',
+        type: 'error'
+      });
+      setCurrentlyPlaying(null);
+      audioRef.current = null;
+    }
+  };
+
+  // Clean up audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   const validateFile = (file: File): boolean => {
     const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -63,15 +142,23 @@ export function CreateAIAgentForm() {
     console.log('Starting form submission...');
 
     try {
+        if (!session?.user?.id) {
+            setToast({
+                message: 'Vous devez être connecté pour créer un agent',
+                type: 'error'
+            });
+            return;
+        }
+
         const formData = new FormData();
         // Log form data being sent
         formData.append('name', agent.name);
-        formData.append('voice', agent.voice);
+        formData.append('voice_name', agent.voice);
+        formData.append('backgroundAudio', agent.backgroundAudio);
         formData.append('language', agent.language);
-        formData.append('personality', agent.personality);
-        formData.append('speed', agent.speed.toString());
-        formData.append('callType', agent.callType);
         formData.append('llmPrompt', agent.llmPrompt);
+        formData.append('allowInterruptions', agent.allowInterruptions.toString());
+        formData.append('aiStartsConversation', agent.aiStartsConversation.toString());
 
         if (agent.knowledgeBase) {
             formData.append('knowledgeBase', agent.knowledgeBase);
@@ -79,15 +166,13 @@ export function CreateAIAgentForm() {
 
         console.log('Form data prepared:', {
             name: agent.name,
-            voice: agent.voice,
+            voice_name: agent.voice,
+            backgroundAudio: agent.backgroundAudio,
             language: agent.language,
-            personality: agent.personality,
-            speed: agent.speed,
-            callType: agent.callType,
             hasFile: !!agent.knowledgeBase
         });
 
-        await createAIAgent(formData, session?.user?.email);
+        await createAIAgent(formData, session.user.id);
         router.push('/dashboard/ai-agents');
     } catch (error) {
         console.error('Form submission error:', error);
@@ -96,7 +181,7 @@ export function CreateAIAgentForm() {
             type: 'error'
         });
     } finally {
-      setIsSubmitting(false);
+        setIsSubmitting(false);
     }
   };
 
@@ -105,10 +190,11 @@ export function CreateAIAgentForm() {
       <div className="bg-white shadow-sm ring-1 ring-gray-900/5 rounded-xl">
         {/* Basic Information */}
         <div className="p-6">
+          <div className="flex items-center mb-6">
+            <UserIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Nom de l'agent <span className="text-red-500">*</span></h2>
+          </div>
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-              Nom de l'agent <span className="text-red-500">*</span>
-            </label>
             <input
               type="text"
               id="name"
@@ -121,43 +207,121 @@ export function CreateAIAgentForm() {
           </div>
         </div>
 
-        {/* Call Type Selection */}
+        {/* Voice Selection Section */}
         <div className="p-6 border-t border-gray-100">
-          <label className="block text-sm font-medium text-gray-700 mb-4">
-            Type d'appels <span className="text-red-500">*</span>
-          </label>
-          <div className="flex gap-4">
-            <button
-              type="button"
-              onClick={() => setAgent({ ...agent, callType: 'inbound' })}
-              className={`flex-1 px-4 py-3 rounded-md text-sm font-medium transition-colors ${
-                agent.callType === 'inbound'
-                  ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              Appels entrants
-            </button>
-            <button
-              type="button"
-              onClick={() => setAgent({ ...agent, callType: 'outbound' })}
-              className={`flex-1 px-4 py-3 rounded-md text-sm font-medium transition-colors ${
-                agent.callType === 'outbound'
-                  ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              Appels sortants
-            </button>
+          <div className="flex items-center mb-6">
+            <SpeakerWaveIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Voix <span className="text-red-500">*</span></h2>
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {voiceSamples.map((voice) => (
+              <div
+                key={voice.id}
+                className={`flex items-center justify-between px-4 py-3 rounded-md ${
+                  agent.voice === voice.id
+                    ? 'bg-blue-50 border-2 border-blue-200'
+                    : 'bg-white border border-gray-300'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setAgent({ ...agent, voice: voice.id })}
+                  className={`text-sm font-medium flex-grow text-left ${
+                    agent.voice === voice.id
+                      ? 'text-blue-700'
+                      : 'text-gray-700 hover:text-gray-900'
+                  }`}
+                >
+                  {voice.name}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePlayPreview(voice.id, voice.url);
+                  }}
+                  className={`p-1.5 rounded-full ml-2 ${
+                    currentlyPlaying === voice.id
+                      ? 'text-blue-600 bg-blue-100 hover:bg-blue-200'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {currentlyPlaying === voice.id ? (
+                    <PauseIcon className="h-4 w-4" />
+                  ) : (
+                    <PlayIcon className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Sélectionnez la voix que votre agent utilisera pour les appels. Cliquez sur le bouton de lecture pour écouter un exemple.
+          </p>
+        </div>
+
+        {/* Background Audio Section */}
+        <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center mb-6">
+            <MusicalNoteIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Son d'ambiance <span className="text-red-500">*</span></h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {ambientSounds.map((sound) => (
+              <div
+                key={sound.id}
+                className={`flex items-center justify-between px-4 py-3 rounded-md ${
+                  agent.backgroundAudio === sound.id
+                    ? 'bg-blue-50 border-2 border-blue-200'
+                    : 'bg-white border border-gray-300'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setAgent({ ...agent, backgroundAudio: sound.id })}
+                  className={`text-sm font-medium flex-grow text-left ${
+                    agent.backgroundAudio === sound.id
+                      ? 'text-blue-700'
+                      : 'text-gray-700 hover:text-gray-900'
+                  }`}
+                >
+                  {sound.name}
+                </button>
+                {sound.url && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePlayPreview(sound.id, sound.url);
+                    }}
+                    className={`p-1.5 rounded-full ml-2 ${
+                      currentlyPlaying === sound.id
+                        ? 'text-blue-600 bg-blue-100 hover:bg-blue-200'
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {currentlyPlaying === sound.id ? (
+                      <PauseIcon className="h-4 w-4" />
+                    ) : (
+                      <PlayIcon className="h-4 w-4" />
+                    )}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Sélectionnez un son d'ambiance pour créer une atmosphère plus immersive
+          </p>
         </div>
 
         {/* Knowledge Base Section */}
         <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center mb-6">
+            <DocumentIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Base de connaissances</h2>
+          </div>
           <div>
-            <label htmlFor="knowledgeBase" className="block text-sm font-medium text-gray-700 mb-2">
-              Base de connaissances
-            </label>
             <p className="mt-1 text-sm text-gray-500 mb-4">
               La base de connaissances permettra à l'agent IA d'intégrer le contexte spécifique de votre entreprise,
               de vos services ou de vos produits, afin de répondre avec précision et pertinence aux questions de vos utilisateurs.
@@ -196,63 +360,6 @@ export function CreateAIAgentForm() {
           </div>
         </div>
 
-        {/* Voice Settings */}
-        <div className="p-6 border-t border-gray-100">
-          <div className="flex items-center mb-6">
-            <SpeakerWaveIcon className="h-6 w-6 text-gray-600 mr-2" />
-            <h2 className="text-lg font-medium">Paramètres vocaux <span className="text-red-500">*</span></h2>
-          </div>
-
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Genre de la voix <span className="text-red-500">*</span>
-              </label>
-              <div className="flex gap-4">
-                <button
-                  type="button"
-                  onClick={() => setAgent({ ...agent, voice: 'male' })}
-                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
-                    agent.voice === 'male'
-                      ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  Masculine
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAgent({ ...agent, voice: 'female' })}
-                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
-                    agent.voice === 'female'
-                      ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  Féminine
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="speed" className="block text-sm font-medium text-gray-700 mb-2">
-                Vitesse de parole ({agent.speed}x) <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="range"
-                id="speed"
-                min="0.5"
-                max="2"
-                step="0.1"
-                value={agent.speed}
-                onChange={(e) => setAgent({ ...agent, speed: parseFloat(e.target.value) })}
-                className="w-full"
-                required
-              />
-            </div>
-          </div>
-        </div>
-
         {/* Language Settings */}
         <div className="p-6 border-t border-gray-100">
           <div className="flex items-center mb-6">
@@ -268,32 +375,8 @@ export function CreateAIAgentForm() {
               required
             >
               <option value="">Sélectionner une langue</option>
-              <optgroup label="Europe de l'Ouest">
-                <option value="fr">Français</option>
-                <option value="en">English</option>
-                <option value="es">Español</option>
-                <option value="pt">Português</option>
-                <option value="it">Italiano</option>
-                <option value="de">Deutsch</option>
-                <option value="nl">Nederlands</option>
-              </optgroup>
-              <optgroup label="Europe de l'Est">
-                <option value="ro">Română</option>
-                <option value="pl">Polski</option>
-                <option value="cs">Čeština</option>
-                <option value="hu">Magyar</option>
-              </optgroup>
-              <optgroup label="Europe du Nord">
-                <option value="sv">Svenska</option>
-                <option value="da">Dansk</option>
-                <option value="no">Norsk</option>
-                <option value="fi">Suomi</option>
-              </optgroup>
-              <optgroup label="Amériques">
-                <option value="pt-BR">Português (Brasil)</option>
-                <option value="es-MX">Español (México)</option>
-                <option value="en-US">English (US)</option>
-              </optgroup>
+              <option value="fr">Français</option>
+              <option value="en">English</option>
             </select>
             <p className="mt-1 text-xs text-gray-500">
               Choisissez la langue principale de l'agent
@@ -301,38 +384,13 @@ export function CreateAIAgentForm() {
           </div>
         </div>
 
-        {/* Personality Settings */}
-        <div className="p-6 border-t border-gray-100">
-          <div className="flex items-center mb-6">
-            <UserGroupIcon className="h-6 w-6 text-gray-600 mr-2" />
-            <h2 className="text-lg font-medium">Personnalité <span className="text-red-500">*</span></h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {personalities.map((personality) => (
-              <button
-                type="button"
-                key={personality.id}
-                onClick={() => setAgent({ ...agent, personality: personality.id })}
-                className={`p-4 rounded-lg border text-left ${
-                  agent.personality === personality.id
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-200'
-                }`}
-              >
-                <h3 className="font-medium mb-1">{personality.name}</h3>
-                <p className="text-sm text-gray-500">{personality.description}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* LLM Prompt Section */}
         <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center mb-6">
+            <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Prompt LLM <span className="text-red-500">*</span></h2>
+          </div>
           <div>
-            <label htmlFor="prompt" className="block text-sm font-medium text-gray-700 mb-2">
-              Prompt LLM <span className="text-red-500">*</span>
-            </label>
             <p className="mt-1 text-sm text-gray-500 mb-4">
               Le prompt vous permettra de guider votre agent IA dans le déroulement de l'appel.
             </p>
@@ -346,6 +404,52 @@ export function CreateAIAgentForm() {
               placeholder="Entrez votre prompt ici..."
               required
             />
+          </div>
+        </div>
+
+        {/* Conversation Settings Section */}
+        <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center mb-6">
+            <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
+            <h2 className="text-lg font-medium">Paramètres de conversation</h2>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center group relative">
+              <input
+                type="checkbox"
+                id="allowInterruptions"
+                checked={agent.allowInterruptions}
+                onChange={(e) => setAgent(prev => ({ ...prev, allowInterruptions: e.target.checked }))}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="allowInterruptions" className="ml-2 block text-sm text-gray-900">
+                Avec interruptions
+              </label>
+              <div className="relative inline-block ml-2">
+                <InformationCircleIcon className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block w-64 bg-gray-900 text-white text-sm rounded-lg p-2 shadow-lg">
+                  <div className="relative">
+                    <div className="text-xs">
+                      Lorsque cette option est activée, l'utilisateur peut interrompre l'agent IA pendant qu'il parle. 
+                      Cela permet une conversation plus naturelle mais peut affecter la cohérence des réponses.
+                    </div>
+                    <div className="absolute w-3 h-3 bg-gray-900 transform rotate-45 left-1/2 -translate-x-1/2 -bottom-1.5"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="aiStartsConversation"
+                checked={agent.aiStartsConversation}
+                onChange={(e) => setAgent(prev => ({ ...prev, aiStartsConversation: e.target.checked }))}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="aiStartsConversation" className="ml-2 block text-sm text-gray-900">
+                L'IA commence la conversation
+              </label>
+            </div>
           </div>
         </div>
       </div>

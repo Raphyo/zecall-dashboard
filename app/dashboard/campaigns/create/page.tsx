@@ -5,7 +5,7 @@ import { DocumentIcon, PhoneIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { getPhoneNumbers, createCampaign, type PhoneNumber } from '@/app/lib/api';
 import { useSession } from 'next-auth/react';
-import { getUserIdFromEmail } from '@/app/lib/user-mapping';
+import { toast, Toaster } from 'react-hot-toast';
 
 interface CampaignForm {
   name: string;
@@ -41,8 +41,11 @@ export default function CreateCampaignPage() {
     try {
       setIsLoadingPhones(true);
       setPhoneError(null);
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
       console.log('Fetching phone numbers...');
-      const numbers = await getPhoneNumbers(session?.user?.email);
+      const numbers = await getPhoneNumbers(session.user.id);
       console.log('Received phone numbers:', numbers);
       setPhoneNumbers(numbers.filter(n => n.status === 'active'));
     } catch (err) {
@@ -65,22 +68,52 @@ export default function CreateCampaignPage() {
     
     // Validate required fields
     if (!campaign.name.trim()) {
-      alert('Le nom de la campagne est requis');
+      toast.error('Le nom de la campagne est requis');
       return;
     }
 
     if (!campaign.contactsFile) {
-      alert('La liste des contacts est requise');
+      toast.error('La liste des contacts est requise');
       return;
     }
 
     if (!campaign.phoneNumberId) {
-      alert('Un numéro de téléphone est requis');
+      toast.error('Un numéro de téléphone est requis');
       return;
     }
 
     try {
       setIsSubmitting(true);
+
+      // Check credits before proceeding
+      const estimatedDurationMinutes = contactsCount * 2; // 2 minutes per contact
+      const creditsResponse = await fetch(`/api/credits/check?duration_minutes=${estimatedDurationMinutes}`);
+      const creditsData = await creditsResponse.json();
+
+      if (!creditsResponse.ok) {
+        throw new Error(creditsData.error || 'Failed to check credits');
+      }
+
+      if (!creditsData.has_sufficient_credits) {
+        const requiredCredits = creditsData.estimated_cost;
+        const currentBalance = creditsData.current_balance;
+        toast.error(
+          <div className="text-sm">
+            <p className="font-medium mb-1">Crédits insuffisants</p>
+            <p>Vous avez {currentBalance.toFixed(2)}€ mais cette campagne nécessite environ {requiredCredits.toFixed(2)}€</p>
+            <p className="mt-2">Veuillez recharger votre compte.</p>
+          </div>,
+          {
+            duration: 6000,
+            style: {
+              maxWidth: '500px',
+            },
+          }
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
       const apiFormData = new FormData();
       apiFormData.append('name', campaign.name);
       apiFormData.append('contacts_file', campaign.contactsFile as File);
@@ -93,9 +126,8 @@ export default function CreateCampaignPage() {
       // Set status based on submission type
       const status = selectedDate ? 'planifiée' : 'en-cours';
       apiFormData.append('status', status);
-      const userId = getUserIdFromEmail(session?.user?.email);
-      if (userId) {
-        apiFormData.append('user_id', userId);
+      if (session?.user?.id) {
+        apiFormData.append('user_id', session.user.id);
       }
       if (selectedDate) {
         apiFormData.append('scheduled_date', selectedDate);
@@ -104,11 +136,11 @@ export default function CreateCampaignPage() {
       console.log('Creating campaign with status:', status);
       await createCampaign(apiFormData);
 
-      router.push('/dashboard/campaigns');
+      router.replace('/dashboard/campaigns');
       setIsSubmitting(false);
     } catch (error) {
       console.error('Error creating campaign:', error);
-      alert(error instanceof Error ? error.message : 'Failed to create campaign');
+      toast.error(error instanceof Error ? error.message : 'Erreur lors de la création de la campagne');
       setIsSubmitting(false);
     }
   };
@@ -126,16 +158,15 @@ export default function CreateCampaignPage() {
       apiFormData.append('phone_number_id', campaign.phoneNumberId);
       apiFormData.append('max_retries', campaign.max_retries.toString());
       apiFormData.append('status', 'brouillon');
-      const userId = getUserIdFromEmail(session?.user?.email);
-      if (userId) {
-        apiFormData.append('user_id', userId);
+      if (session?.user?.id) {
+        apiFormData.append('user_id', session.user.id);
       }
 
       await createCampaign(apiFormData);
-      router.push('/dashboard/campaigns');
+      router.replace('/dashboard/campaigns');
     } catch (error) {
       console.error('Error saving draft:', error);
-      alert(error instanceof Error ? error.message : 'Failed to save draft');
+      toast.error(error instanceof Error ? error.message : 'Erreur lors de l\'enregistrement du brouillon');
     } finally {
       setIsSubmitting(false);
     }
@@ -147,7 +178,7 @@ export default function CreateCampaignPage() {
 
     // Validate file type
     if (!file.name.toLowerCase().endsWith('.csv')) {
-      alert('Veuillez sélectionner un fichier CSV');
+      toast.error('Veuillez sélectionner un fichier CSV');
       e.target.value = '';  // Reset the file input
       return;
     }
@@ -158,7 +189,7 @@ export default function CreateCampaignPage() {
       // Validate CSV structure
       const headers = text.split('\n')[0].toLowerCase();
       if (!headers.includes('phone_number') || !headers.includes('name') || !headers.includes('email')) {
-        alert('Le fichier CSV doit contenir les colonnes "phone_number", "name" et "email"');
+        toast.error('Le fichier CSV doit contenir les colonnes "phone_number", "name" et "email"');
         setCampaign(prev => ({ ...prev, contactsFile: null }));
         e.target.value = '';  // Reset the file input
         return;
@@ -172,6 +203,39 @@ export default function CreateCampaignPage() {
 
   return (
     <>
+      <Toaster
+        position="bottom-right"
+        reverseOrder={false}
+        containerStyle={{
+          bottom: '24px',
+          right: '24px',
+        }}
+        toastOptions={{
+          style: {
+            background: '#ffffff',
+            color: '#374151',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            borderRadius: '8px',
+            padding: '16px',
+          },
+          success: {
+            duration: 4000,
+            style: {
+              background: '#F0FDF4',
+              color: '#166534',
+              border: '1px solid #DCFCE7',
+            },
+          },
+          error: {
+            duration: 6000,
+            style: {
+              background: '#FEF2F2',
+              color: '#991B1B',
+              border: '1px solid #FEE2E2',
+            },
+          },
+        }}
+      />
       {isSubmitting ? (
         <div className="w-full max-w-3xl mx-auto">
           <div className="h-8 w-48 bg-gray-200 rounded mb-6 animate-pulse" />
@@ -420,7 +484,7 @@ export default function CreateCampaignPage() {
               <div className="mt-6 flex justify-end gap-4">
                 <button
                   type="button"
-                  onClick={() => router.push('/dashboard/campaigns')}
+                  onClick={() => router.replace('/dashboard/campaigns')}
                   className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Annuler

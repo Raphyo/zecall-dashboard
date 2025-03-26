@@ -9,6 +9,7 @@ import { Menu, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { toast } from 'sonner';
 
 type Status = 'en-cours' | 'planifiée' | 'terminée' | 'brouillon';
 
@@ -21,8 +22,11 @@ export default function CampaignsPage() {
 
   const checkCampaignsStatus = async (campaigns: Campaign[]) => {
     try {
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
       // Get all calls in one request
-      const allCalls = await getCalls(session?.user?.email);
+      const allCalls = await getCalls(session.user.id);
       
       // Process locally
       for (const campaign of campaigns) {
@@ -52,7 +56,10 @@ export default function CampaignsPage() {
   const loadCampaigns = async () => {
     try {
       setIsLoading(true);
-      const data = await getCampaigns(session?.user?.email);
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+      const data = await getCampaigns(session.user.id);
       setCampaigns(data);
     } catch (err) {
       setError('Erreur lors du chargement des campagnes');
@@ -68,7 +75,7 @@ export default function CampaignsPage() {
       loadCampaigns(); // Refresh the list
     } catch (err) {
       console.error('Error deleting campaign:', err);
-      alert('Erreur lors de la suppression de la campagne');
+      toast.error('Erreur lors de la suppression de la campagne');
     }
   };
 

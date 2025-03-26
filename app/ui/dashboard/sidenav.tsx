@@ -5,21 +5,24 @@ import NavLinks from '@/app/ui/dashboard/nav-links';
 import AcmeLogo from '@/app/ui/acme-logo';
 import { useSession } from 'next-auth/react';
 import ProfileMenu from '@/app/components/ProfileMenu';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CurrencyEuroIcon } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
+
+// Create a custom event for credit updates
+export const creditUpdateEvent = new EventTarget();
+export const CREDIT_UPDATE_EVENT = 'creditUpdate';
 
 export default function SideNav() {
   const { data: session } = useSession();
   const [credits, setCredits] = useState(0);
   const [isLoadingCheckout, setIsLoadingCheckout] = useState(false);
   const [rechargeAmount, setRechargeAmount] = useState<string>('15');
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const refreshIntervalRef = useRef<NodeJS.Timeout>();
+  const REFRESH_INTERVAL = 60000; // Match the 60-second refresh interval
 
-  useEffect(() => {
-    fetchCredits();
-  }, []);
-
-  const fetchCredits = async () => {
+  const fetchCredits = async (isRefresh = false) => {
     try {
       const response = await fetch('/api/credits');
       const data = await response.json();
@@ -31,8 +34,30 @@ export default function SideNav() {
       setCredits(data.credits);
     } catch (error) {
       console.error('Error fetching credits:', error);
+    } finally {
+      setIsInitialLoad(false);
     }
   };
+
+  useEffect(() => {
+    // Only fetch if session is available
+    if (session) {
+      // Initial fetch
+      fetchCredits(false);
+
+      // Set up interval for periodic refresh
+      refreshIntervalRef.current = setInterval(() => {
+        fetchCredits(true);
+      }, REFRESH_INTERVAL);
+
+      // Cleanup function
+      return () => {
+        if (refreshIntervalRef.current) {
+          clearInterval(refreshIntervalRef.current);
+        }
+      };
+    }
+  }, [session]); // Add session as a dependency
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -78,17 +103,18 @@ export default function SideNav() {
   return (
     <div className="flex h-full flex-col px-3 py-4 md:px-2">
       <Link
-        className="mb-2 flex h-20 items-end justify-start rounded-md p-4 md:h-40"
+        className="mb-2 flex h-20 items-end justify-start rounded-md p-4 md:h-28 shrink-0"
         href="/"
       >
         <div className="w-32 md:w-40">
           <AcmeLogo />
         </div>
       </Link>
-      <div className="flex grow flex-row justify-between space-x-2 md:flex-col md:space-x-0 md:space-y-2">
-        <NavLinks />
-        <div className="hidden h-auto w-full grow rounded-md bg-gray-50 md:block"></div>
-        <div className="hidden md:flex flex-col space-y-4 px-3 py-2">
+      <div className="flex flex-col flex-1 justify-between min-h-0 space-y-2">
+        <div className="flex flex-col space-y-2">
+          <NavLinks />
+        </div>
+        <div className="flex flex-col space-y-4 px-3 py-2">
           {/* Credits and Recharge Button */}
           <div className="flex flex-col space-y-4">
             <div className="flex items-center bg-blue-50 px-4 py-2 rounded-md border border-blue-100">
@@ -136,7 +162,9 @@ export default function SideNav() {
           </div>
           {/* Profile Menu */}
           {session?.user?.email && (
-            <ProfileMenu email={session.user.email} />
+            <div className="mb-4">
+              <ProfileMenu email={session.user.email} />
+            </div>
           )}
         </div>
       </div>

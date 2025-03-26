@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { getCalls, getCampaigns, updateCampaignStatus } from '@/app/lib/api';
 import { useSession } from 'next-auth/react';
 import { 
@@ -8,11 +8,15 @@ import {
   PhoneArrowDownLeftIcon, 
   ClockIcon, 
   PhoneIcon,
+  PlusIcon,
+  CurrencyEuroIcon,
 } from '@heroicons/react/24/outline';
 import { inter } from '@/app/ui/fonts';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale/fr';
 import { Call } from '@/app/ui/calls/types';
+import { calculateCallCost } from '@/app/lib/utils';
+import Link from 'next/link';
 
 function SkeletonCard() {
   return (
@@ -39,6 +43,9 @@ interface Campaign {
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const refreshIntervalRef = useRef<NodeJS.Timeout>();
+  const REFRESH_INTERVAL = 60000; // Refresh every 60 seconds to match call history page
   const [stats, setStats] = useState({
     inboundCalls: 0,
     outboundCalls: 0,
@@ -48,7 +55,9 @@ export default function DashboardPage() {
     todayOutbound: 0,
     yesterdayInbound: 0,
     yesterdayOutbound: 0,
-    totalDuration: 0
+    totalDuration: 0,
+    totalCost: 0,
+    avgCostPerCall: 0
   });
   const [recentCalls, setRecentCalls] = useState<RecentCall[]>([]);
   const [activeCampaigns, setActiveCampaigns] = useState<Campaign[]>([]);
@@ -60,127 +69,158 @@ export default function DashboardPage() {
     }
   }, [status]);
 
-  useEffect(() => {
-    const loadDashboardData = async () => {
-      if (status !== 'authenticated' || !session?.user?.email) return;
-      
-      try {
+  const loadDashboardData = async (isRefresh = false) => {
+    if (status !== 'authenticated' || !session?.user?.id) return;
+    
+    try {
+      // Only show loading state on initial load
+      if (!isRefresh) {
         setIsLoading(true);
-        const calls = await getCalls(session.user.email);
-        const campaigns = await getCampaigns(session.user.email);
-        
-        // Get recent calls (last 10)
-        const recent = calls
-        .filter(call => call.date && call.hour) // Ensure we have valid date and hour
-        .sort((a, b) => {
-          const dateA = new Date(a.date + ' ' + a.hour);
-          const dateB = new Date(b.date + ' ' + b.hour);
-          return dateB.getTime() - dateA.getTime();
-        })
-        .map(call => ({
-          ...call,
-          call_status: call.call_status || 'inconnu' // Provide a default value for null
-        }))
-        .slice(0, 10);
-        setRecentCalls(recent);
+      }
 
-        // Check and update campaign statuses
-        for (const campaign of campaigns) {
-          if (campaign.status !== 'terminée') {
-            const campaignCalls = calls.filter(call => call.campaign_id === campaign.id);
-            if (campaignCalls.length > 0 && campaignCalls.length >= campaign.contacts_count) {
-              const allCallsCompleted = campaignCalls.every(call => 
-                call.call_status === 'completed' || call.call_status === 'failed'
-              );
-              
-              if (allCallsCompleted) {
-                try {
-                  await updateCampaignStatus(campaign.id, 'terminée');
-                  campaign.status = 'terminée'; // Update local state
-                } catch (error) {
-                  console.error('Error updating campaign status:', error);
-                }
+      const calls = await getCalls(session.user.id);
+      const campaigns = await getCampaigns(session.user.id);
+      
+      // Get recent calls (last 10)
+      const recent = calls
+      .filter(call => call.date && call.hour)
+      .sort((a, b) => {
+        const dateA = new Date(a.date + ' ' + a.hour);
+        const dateB = new Date(b.date + ' ' + b.hour);
+        return dateB.getTime() - dateA.getTime();
+      })
+      .map(call => ({
+        ...call,
+        call_status: call.call_status || 'inconnu'
+      }))
+      .slice(0, 10);
+      setRecentCalls(recent);
+
+      // Check and update campaign statuses
+      for (const campaign of campaigns) {
+        if (campaign.status !== 'terminée') {
+          const campaignCalls = calls.filter(call => call.campaign_id === campaign.id);
+          if (campaignCalls.length > 0 && campaignCalls.length >= campaign.contacts_count) {
+            const allCallsCompleted = campaignCalls.every(call => 
+              call.call_status === 'completed' || call.call_status === 'failed'
+            );
+            
+            if (allCallsCompleted) {
+              try {
+                await updateCampaignStatus(campaign.id, 'terminée');
+                campaign.status = 'terminée';
+              } catch (error) {
+                console.error('Error updating campaign status:', error);
               }
             }
           }
         }
+      }
 
-        // Get today's and yesterday's dates
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
+      // Get today's and yesterday's dates
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
 
-        // Filter calls for today and yesterday
-        const todayCalls = calls.filter(call => {
-          const callDate = new Date(call.date);
-          return callDate >= today && callDate < tomorrow;
-        });
+      // Filter calls for today and yesterday
+      const todayCalls = calls.filter(call => {
+        const callDate = new Date(call.date);
+        return callDate >= today && callDate < tomorrow;
+      });
 
-        const yesterdayCalls = calls.filter(call => {
-          const callDate = new Date(call.date);
-          return callDate >= yesterday && callDate < today;
-        });
+      const yesterdayCalls = calls.filter(call => {
+        const callDate = new Date(call.date);
+        return callDate >= yesterday && callDate < today;
+      });
 
-        // Count today's calls by direction
-        const todayInbound = todayCalls.filter(call => call.direction === 'entrant').length;
-        const todayOutbound = todayCalls.filter(call => call.direction === 'sortant').length;
+      // Count today's calls by direction
+      const todayInbound = todayCalls.filter(call => call.direction === 'entrant').length;
+      const todayOutbound = todayCalls.filter(call => call.direction === 'sortant').length;
 
-        // Count yesterday's calls by direction
-        const yesterdayInbound = yesterdayCalls.filter(call => call.direction === 'entrant').length;
-        const yesterdayOutbound = yesterdayCalls.filter(call => call.direction === 'sortant').length;
+      // Count yesterday's calls by direction
+      const yesterdayInbound = yesterdayCalls.filter(call => call.direction === 'entrant').length;
+      const yesterdayOutbound = yesterdayCalls.filter(call => call.direction === 'sortant').length;
 
-        // Count total calls by direction
-        const inboundCalls = calls.filter(call => call.direction === 'entrant').length;
-        const outboundCalls = calls.filter(call => call.direction === 'sortant').length;
+      // Count total calls by direction
+      const inboundCalls = calls.filter(call => call.direction === 'entrant').length;
+      const outboundCalls = calls.filter(call => call.direction === 'sortant').length;
 
-        // Calculate total duration (in seconds)
-        const totalDuration = calls.reduce((sum, call) => sum + (call.duration || 0), 0);
-        const avgDuration = calls.length > 0 ? Math.round(totalDuration / calls.length) : 0;
+      // Calculate total duration (in seconds)
+      const totalDuration = calls.reduce((sum, call) => sum + (call.duration || 0), 0);
+      const avgDuration = calls.length > 0 ? Math.round(totalDuration / calls.length) : 0;
 
-        // Calculate average calls per day
-        const dates = [...new Set(calls.map(call => call.date.split('T')[0]))];
-        const avgCallsPerDay = dates.length > 0 ? Math.round(calls.length / dates.length) : 0;
+      // Calculate average calls per day
+      const dates = [...new Set(calls.map(call => call.date.split('T')[0]))];
+      const avgCallsPerDay = dates.length > 0 ? Math.round(calls.length / dates.length) : 0;
 
-        // Get active campaigns
-        const active = campaigns
-          .filter(c => c.status !== 'terminée')
-          .map(c => ({
-            id: c.id,
-            name: c.name,
-            total_calls: c.contacts_count,
-            completed_calls: calls.filter(call => call.campaign_id === c.id).length,
-            progress: Math.round((calls.filter(call => call.campaign_id === c.id).length / c.contacts_count) * 100)
-          }));
-        setActiveCampaigns(active);
-
-        setStats({
-          inboundCalls,
-          outboundCalls,
-          avgDuration,
-          avgCallsPerDay,
-          todayInbound,
-          todayOutbound,
-          yesterdayInbound,
-          yesterdayOutbound,
-          totalDuration
-        });
+      // Calculate total cost and average cost per call
+      let totalCost = 0;
+      try {
+        totalCost = calls.reduce((sum, call) => {
+          const callCost = calculateCallCost(call.duration || 0);
+          return sum + (Number(callCost) || 0);
+        }, 0);
       } catch (error) {
-        console.error('Error loading dashboard data:', error);
-      } finally {
+        console.error('Error calculating total cost:', error);
+      }
+
+      const avgCostPerCall = calls.length > 0 ? totalCost / calls.length : 0;
+
+      // Get active campaigns
+      const active = campaigns
+        .filter(c => c.status !== 'terminée')
+        .map(c => ({
+          id: c.id,
+          name: c.name,
+          total_calls: c.contacts_count,
+          completed_calls: calls.filter(call => call.campaign_id === c.id).length,
+          progress: Math.round((calls.filter(call => call.campaign_id === c.id).length / c.contacts_count) * 100)
+        }));
+      setActiveCampaigns(active);
+
+      setStats({
+        inboundCalls,
+        outboundCalls,
+        avgDuration,
+        avgCallsPerDay,
+        todayInbound,
+        todayOutbound,
+        yesterdayInbound,
+        yesterdayOutbound,
+        totalDuration,
+        totalCost,
+        avgCostPerCall
+      });
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      if (!isRefresh) {
         setIsLoading(false);
       }
+      setIsInitialLoad(false);
+    }
+  };
+
+  // Set up auto-refresh
+  useEffect(() => {
+    // Initial load
+    loadDashboardData(false);
+
+    // Set up interval for periodic refresh
+    refreshIntervalRef.current = setInterval(() => {
+      loadDashboardData(true);
+    }, REFRESH_INTERVAL);
+
+    // Cleanup function
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
     };
-
-    loadDashboardData();
-
-    // Set up periodic refresh
-    const refreshInterval = setInterval(loadDashboardData, 30000); // Refresh every 30 seconds
-
-    return () => clearInterval(refreshInterval);
-  }, [session?.user?.email, status]);
+  }, [session?.user?.id, status]);
 
   // Show loading state
   if (status === 'loading' || isLoading) {
@@ -246,43 +286,30 @@ export default function DashboardPage() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-          {/* Today's Inbound Calls */}
+          {/* Today's Inbound Calls -> Total Calls */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500">Appels Entrants (Aujourd'hui)</h3>
+              <h3 className="text-sm font-medium text-gray-500">Nombre total d'appels</h3>
               <span className="p-2 bg-blue-50 rounded-lg">
-                <PhoneArrowDownLeftIcon className="w-5 h-5 text-blue-600" />
+                <PhoneIcon className="w-5 h-5 text-blue-600" />
               </span>
             </div>
-            <div>
-              <p className="text-2xl font-semibold text-gray-900">{stats.todayInbound}</p>
-              <p className="text-sm text-gray-500 mt-1">Hier: {stats.yesterdayInbound}</p>
-            </div>
-          </div>
-
-          {/* Today's Outbound Calls */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500">Appels Sortants (Aujourd'hui)</h3>
-              <span className="p-2 bg-green-50 rounded-lg">
-                <PhoneArrowUpRightIcon className="w-5 h-5 text-green-600" />
-              </span>
-            </div>
-            <div>
-              <p className="text-2xl font-semibold text-gray-900">{stats.todayOutbound}</p>
-              <p className="text-sm text-gray-500 mt-1">Hier: {stats.yesterdayOutbound}</p>
+            <div className="flex flex-col">
+              <p className="text-2xl font-semibold text-gray-900">{stats.inboundCalls + stats.outboundCalls}</p>
             </div>
           </div>
 
           {/* Total Duration */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500">Temps Total d'Appel</h3>
+              <h3 className="text-sm font-medium text-gray-500">Temps Total</h3>
               <span className="p-2 bg-yellow-50 rounded-lg">
                 <ClockIcon className="w-5 h-5 text-yellow-600" />
               </span>
             </div>
-            <p className="text-2xl font-semibold text-gray-900">{formatTotalDuration(stats.totalDuration)}</p>
+            <div className="flex flex-col">
+              <p className="text-2xl font-semibold text-gray-900">{formatTotalDuration(stats.totalDuration)}</p>
+            </div>
           </div>
 
           {/* Average Duration */}
@@ -293,76 +320,42 @@ export default function DashboardPage() {
                 <ClockIcon className="w-5 h-5 text-purple-600" />
               </span>
             </div>
-            <p className="text-2xl font-semibold text-gray-900">{formatDuration(stats.avgDuration)}</p>
+            <div className="flex flex-col">
+              <p className="text-2xl font-semibold text-gray-900">{formatDuration(stats.avgDuration)}</p>
+            </div>
           </div>
 
-          {/* Total Calls */}
+          {/* Total Cost */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-gray-500">Total des Appels</h3>
-              <span className="p-2 bg-indigo-50 rounded-lg">
-                <PhoneIcon className="w-5 h-5 text-indigo-600" />
+              <h3 className="text-sm font-medium text-gray-500">Montant Total</h3>
+              <span className="p-2 bg-green-50 rounded-lg">
+                <CurrencyEuroIcon className="w-5 h-5 text-green-600" />
               </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <PhoneArrowDownLeftIcon className="w-4 h-4 text-blue-600" />
-                <p className="text-lg font-semibold text-gray-900">{stats.inboundCalls} entrants</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <PhoneArrowUpRightIcon className="w-4 h-4 text-green-600" />
-                <p className="text-lg font-semibold text-gray-900">{stats.outboundCalls} sortants</p>
-              </div>
+            <div className="flex flex-col">
+              <p className="text-2xl font-semibold text-gray-900">{stats.totalCost.toFixed(2)}€</p>
+            </div>
+          </div>
+
+          {/* Average Cost */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-medium text-gray-500">Coût Moyen</h3>
+              <span className="p-2 bg-emerald-50 rounded-lg">
+                <CurrencyEuroIcon className="w-5 h-5 text-emerald-600" />
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <p className="text-2xl font-semibold text-gray-900">{stats.avgCostPerCall.toFixed(2)}€</p>
             </div>
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6 mt-12">
-          {/* Recent Activity */}
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-lg font-semibold mb-4">Activité Récente</h2>
-            <div className="space-y-4">
-              {recentCalls.map(call => (
-                <div key={call.id} className="flex items-center gap-4">
-                  <div className={`p-2 rounded-full ${
-                    call.direction === 'sortant' ? 'bg-green-50' : 'bg-blue-50'
-                  }`}>
-                    {call.direction === 'sortant' ? 
-                      <PhoneArrowUpRightIcon className="w-5 h-5 text-green-600" /> :
-                      <PhoneArrowDownLeftIcon className="w-5 h-5 text-blue-600" />
-                    }
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">{call.caller_number}</p>
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
-                        {call.call_status}
-                      </span>
-                      {call.call_category && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                          {call.call_category}
-                        </span>
-                      )}
-                      <p className="text-sm text-gray-500">
-                        {formatDistanceToNow(new Date(call.date + ' ' + call.hour), { 
-                          addSuffix: true,
-                          locale: fr 
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-sm text-gray-500">{formatDuration(call.duration)}</div>
-                </div>
-              ))}
-              {recentCalls.length === 0 && (
-                <p className="text-center text-gray-500">Aucun appel récent</p>
-              )}
-            </div>
-          </div>
-
+        <div className="grid md:grid-cols-1 gap-6 mt-12">
           {/* Active Campaigns */}
           <div className="bg-white rounded-xl p-6 shadow-sm">
-            <h2 className="text-lg font-semibold mb-4">Campagnes Actives</h2>
+            <h2 className="text-lg font-semibold mb-4">Campagnes</h2>
             <div className="space-y-4">
               {activeCampaigns.map(campaign => (
                 <div key={campaign.id} className="space-y-2">
@@ -382,9 +375,22 @@ export default function DashboardPage() {
                 </div>
               ))}
               {activeCampaigns.length === 0 && (
-                <p className="text-gray-500 text-center py-4">
-                  Aucune campagne active
-                </p>
+                <div className="text-center py-8">
+                  <div className="mx-auto h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
+                    <PlusIcon className="h-6 w-6 text-blue-600" aria-hidden="true" />
+                  </div>
+                  <h3 className="mt-2 text-sm font-semibold text-gray-900">Aucune campagne</h3>
+                  <p className="mt-1 text-sm text-gray-500">Commencez par créer une nouvelle campagne.</p>
+                  <div className="mt-6">
+                    <Link
+                      href="/dashboard/campaigns/create"
+                      className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                    >
+                      <PlusIcon className="-ml-0.5 mr-1.5 h-5 w-5" aria-hidden="true" />
+                      Créer une campagne
+                    </Link>
+                  </div>
+                </div>
               )}
             </div>
           </div>
