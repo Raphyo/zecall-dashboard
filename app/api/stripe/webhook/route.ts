@@ -3,17 +3,13 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { ANALYTICS_URL } from '@/app/lib/api';
 
-// Make the webhook endpoint public and configure for edge runtime
-export const runtime = 'edge';
-export const dynamic = 'force-dynamic';
-
 // Check test mode based on Stripe key prefix
 const stripeKey = process.env.STRIPE_RESTRICTED_KEY!;
 const isTestMode = stripeKey.startsWith('rk_test_');
 console.log('🔑 Stripe webhook mode:', isTestMode ? 'test' : 'live');
 
 const stripe = new Stripe(stripeKey, {
-  apiVersion: '2025-02-24.acacia',
+  apiVersion: '2025-01-27.acacia' as any,
   typescript: true,
   appInfo: {
     name: 'ZeCall Dashboard',
@@ -32,14 +28,7 @@ export async function POST(request: Request) {
     console.error('❌ No Stripe signature found in webhook request');
     return NextResponse.json(
       { error: 'No signature found' },
-      { 
-        status: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
-        }
-      }
+      { status: 400 }
     );
   }
 
@@ -53,14 +42,7 @@ export async function POST(request: Request) {
     console.error('❌ Webhook signature verification failed:', error.message);
     return NextResponse.json(
       { error: 'Webhook signature verification failed' },
-      { 
-        status: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
-        }
-      }
+      { status: 400 }
     );
   }
 
@@ -100,20 +82,15 @@ export async function POST(request: Request) {
         });
         
         // Make request to backend API
-        const payload = {
-          user_id: userId,
-          amount: amount,
-          stripe_payment_id: paymentIntentId
-        };
+        const formData = new FormData();
+        formData.append('user_id', userId);
+        formData.append('amount', amount.toString());
+        formData.append('stripe_payment_id', paymentIntentId);
 
         console.log('🔵 Adding credits at:', `${ANALYTICS_URL}/api/credits/add`);
         const response = await fetch(`${ANALYTICS_URL}/api/credits/add`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(payload)
+          body: formData
         });
 
         if (!response.ok) {
@@ -130,39 +107,12 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json(
-      { received: true },
-      {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
-        }
-      }
-    );
+    return NextResponse.json({ received: true });
   } catch (error) {
     console.error('❌ Webhook handler failed:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Webhook handler failed' },
-      { 
-        status: 500,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
-        }
-      }
+      { status: 500 }
     );
   }
-}
-
-// Add OPTIONS handler for CORS preflight
-export async function OPTIONS() {
-  return NextResponse.json({}, {
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
-    }
-  });
 } 
