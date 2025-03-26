@@ -14,21 +14,26 @@ const stripe = new Stripe(process.env.STRIPE_RESTRICTED_KEY!, {
 // This is your Stripe CLI webhook secret for testing your endpoint locally.
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-// Set CORS headers to allow Stripe
-export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
-};
-
 // Handle OPTIONS request for CORS
 export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+  return NextResponse.json({}, { 
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+    }
+  });
 }
 
 export async function POST(request: Request) {
   console.log('🎯 Webhook endpoint hit');
   
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, stripe-signature',
+  };
+
   try {
     const body = await request.text();
     console.log('📦 Request body length:', body.length);
