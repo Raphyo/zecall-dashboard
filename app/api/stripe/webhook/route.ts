@@ -1,14 +1,14 @@
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { getUserIdFromEmail } from '@/app/lib/user-mapping';
 import { ANALYTICS_URL } from '@/app/lib/api';
 
-// Make sure we're using test mode
-const isTestMode = process.env.NODE_ENV === 'development';
+// Check test mode based on Stripe key prefix
+const stripeKey = process.env.STRIPE_RESTRICTED_KEY!;
+const isTestMode = stripeKey.startsWith('rk_test_');
 console.log('🔑 Stripe webhook mode:', isTestMode ? 'test' : 'live');
 
-const stripe = new Stripe(process.env.STRIPE_RESTRICTED_KEY!, {
+const stripe = new Stripe(stripeKey, {
   apiVersion: '2025-02-24.acacia',
   typescript: true,
   appInfo: {
@@ -52,16 +52,16 @@ export async function POST(request: Request) {
         const session = event.data.object as Stripe.Checkout.Session;
         console.log('💰 Processing completed checkout session:', session.id);
         
-        // Extract amount and userEmail from metadata
+        // Extract amount and user ID from metadata
         const amount = Number(session.metadata?.amount || 0);
-        const userEmail = session.metadata?.userId; // This is actually the email
+        const userId = session.metadata?.userId;
         const paymentIntentId = typeof session.payment_intent === 'string' ? 
           session.payment_intent : 
           session.payment_intent?.id;
 
         // Validate all required data
-        if (!userEmail) {
-          throw new Error('No user email found in session metadata');
+        if (!userId) {
+          throw new Error('No user ID found in session metadata');
         }
         if (!amount || amount <= 0) {
           throw new Error('Invalid amount in session metadata');
@@ -70,19 +70,12 @@ export async function POST(request: Request) {
           throw new Error('No payment intent ID found in session');
         }
 
-        // Get actual user ID from email
-        const userId = await getUserIdFromEmail(userEmail);
-        if (!userId) {
-          throw new Error(`User not found for email: ${userEmail}`);
-        }
-
         // Validate backend URL
         if (!ANALYTICS_URL) {
           throw new Error('ANALYTICS_URL is not configured');
         }
 
         console.log('✅ Adding funds:', {
-          userEmail,
           userId,
           amount,
           paymentIntent: paymentIntentId,
