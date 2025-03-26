@@ -82,15 +82,20 @@ export async function POST(request: Request) {
         });
         
         // Make request to backend API
-        const formData = new FormData();
-        formData.append('user_id', userId);
-        formData.append('amount', amount.toString());
-        formData.append('stripe_payment_id', paymentIntentId);
+        const payload = {
+          user_id: userId,
+          amount: amount,
+          stripe_payment_id: paymentIntentId
+        };
 
         console.log('🔵 Adding credits at:', `${ANALYTICS_URL}/api/credits/add`);
         const response = await fetch(`${ANALYTICS_URL}/api/credits/add`, {
           method: 'POST',
-          body: formData
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
