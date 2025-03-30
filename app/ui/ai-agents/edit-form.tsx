@@ -7,6 +7,7 @@ import { getAIAgents, updateAIAgent, deleteAIAgentFile } from '@/app/lib/api';
 import { ORCHESTRATOR_URL } from '@/app/lib/api';
 import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
+import { CreateAgentSkeleton } from '../skeletons';
 
 // Import audio files
 const metroAudio = '/api/audio?file=Almost-Empty-Metro-Station-in-Paris.mp3';
@@ -34,6 +35,9 @@ interface AIAgent {
   ai_starts_conversation: boolean;
   created_at: string;
   user_id: string;
+  silence_detection: boolean;
+  silence_timeout: number;
+  max_retries: number;
 }
 
 export function EditAIAgentForm({ agentId }: { agentId: string }) {
@@ -43,14 +47,17 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
   const [loading, setLoading] = useState(true);
   const [agent, setAgent] = useState({
     name: '',
-    voice_name: 'guillaume-11labs',
+    voiceName: 'guillaume-11labs',
     backgroundAudio: 'none',
     language: 'fr-FR',
     knowledgeBase: null as File | null,
     knowledgeBaseType: 'pdf',
     llmPrompt: '',
     allowInterruptions: false,
-    aiStartsConversation: false
+    aiStartsConversation: false,
+    silenceDetection: false,
+    silenceTimeout: 30,
+    maxRetries: 3
   });
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
@@ -77,14 +84,17 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
         if (currentAgent) {
           setAgent({
             name: currentAgent.name,
-            voice_name: currentAgent.voice_name,
+            voiceName: currentAgent.voice_name,
             backgroundAudio: currentAgent.background_audio || 'none',
             language: currentAgent.language,
             knowledgeBase: null,
             knowledgeBaseType: currentAgent.knowledge_base_type || 'pdf',
             llmPrompt: currentAgent.llm_prompt || '',
             allowInterruptions: currentAgent.allow_interruptions || false,
-            aiStartsConversation: currentAgent.ai_starts_conversation || false
+            aiStartsConversation: currentAgent.ai_starts_conversation || false,
+            silenceDetection: currentAgent.silence_detection || false,
+            silenceTimeout: currentAgent.silence_timeout || 30,
+            maxRetries: currentAgent.max_retries || 3
           });
           if (currentAgent.knowledge_base_path) {
             setSelectedFileName(currentAgent.knowledge_base_path.split('/').pop() || '');
@@ -198,21 +208,24 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
 
       const formData = new FormData();
       formData.append('name', agent.name);
-      formData.append('voice_name', agent.voice_name);
+      formData.append('voice_name', agent.voiceName);
       formData.append('language', agent.language);
-      formData.append('llmPrompt', agent.llmPrompt);
-      formData.append('backgroundAudio', agent.backgroundAudio);
-      formData.append('allowInterruptions', agent.allowInterruptions.toString());
-      formData.append('aiStartsConversation', agent.aiStartsConversation.toString());
+      formData.append('llm_prompt', agent.llmPrompt);
+      formData.append('background_audio', agent.backgroundAudio);
+      formData.append('allow_interruptions', agent.allowInterruptions.toString());
+      formData.append('ai_starts_conversation', agent.aiStartsConversation.toString());
+      formData.append('silence_detection', agent.silenceDetection.toString());
+      formData.append('silence_timeout', agent.silenceTimeout.toString());
+      formData.append('max_retries', agent.maxRetries.toString());
 
       if (!session?.user?.id) {
         throw new Error('User ID not found');
       }
-      formData.append('userId', session.user.id);
+      formData.append('user_id', session.user.id);
 
       if (agent.knowledgeBase) {
         console.log('Adding knowledge base file:', agent.knowledgeBase.name);
-        formData.append('knowledgeBase', agent.knowledgeBase);
+        formData.append('knowledge_base', agent.knowledgeBase);
       }
 
       console.log('Submitting form data to API...');
@@ -283,7 +296,7 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
   };
 
   if (loading) {
-    return <div>Chargement...</div>;
+    return <CreateAgentSkeleton />;
   }
 
   return (
@@ -319,16 +332,16 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
               <div
                 key={voice.id}
                 className={`flex items-center justify-between px-4 py-3 rounded-md ${
-                  agent.voice_name === voice.id
+                  agent.voiceName === voice.id
                     ? 'bg-blue-50 border-2 border-blue-200'
                     : 'bg-white border border-gray-300'
                 }`}
               >
                 <button
                   type="button"
-                  onClick={() => setAgent({ ...agent, voice_name: voice.id })}
+                  onClick={() => setAgent({ ...agent, voiceName: voice.id })}
                   className={`text-sm font-medium flex-grow text-left ${
-                    agent.voice_name === voice.id
+                    agent.voiceName === voice.id
                       ? 'text-blue-700'
                       : 'text-gray-700 hover:text-gray-900'
                   }`}
@@ -539,6 +552,76 @@ export function EditAIAgentForm({ agentId }: { agentId: string }) {
                 </div>
               </div>
             </div>
+
+            <div className="flex items-center group relative">
+              <input
+                type="checkbox"
+                id="silenceDetection"
+                checked={agent.silenceDetection}
+                onChange={(e) => setAgent(prev => ({ ...prev, silenceDetection: e.target.checked }))}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="silenceDetection" className="ml-2 block text-sm text-gray-900">
+                Détection de silence
+              </label>
+              <div className="relative inline-block ml-2">
+                <InformationCircleIcon className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block w-64 bg-gray-900 text-white text-sm rounded-lg p-2 shadow-lg">
+                  <div className="relative">
+                    <div className="text-xs">
+                      Nombre de secondes que l'IA attendra avant de parler lorsqu'elle détecte un silence. 
+                      Nombre maximum de tentatives de relance avant de raccrocher.
+                    </div>
+                    <div className="absolute w-3 h-3 bg-gray-900 transform rotate-45 left-1/2 -translate-x-1/2 -bottom-1.5"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {agent.silenceDetection && (
+              <div className="ml-6 space-y-4">
+                <div className="flex flex-col space-y-2">
+                  <label htmlFor="silenceTimeout" className="text-sm text-gray-700">
+                    Délai d'attente (secondes)
+                  </label>
+                  <input
+                    type="range"
+                    id="silenceTimeout"
+                    min="5"
+                    max="45"
+                    value={agent.silenceTimeout || 30}
+                    onChange={(e) => setAgent(prev => ({ ...prev, silenceTimeout: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>5s</span>
+                    <span>{agent.silenceTimeout || 30}s</span>
+                    <span>45s</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col space-y-2">
+                  <label htmlFor="maxRetries" className="text-sm text-gray-700">
+                    Nombre maximum de tentatives
+                  </label>
+                  <input
+                    type="range"
+                    id="maxRetries"
+                    min="1"
+                    max="5"
+                    value={agent.maxRetries || 3}
+                    onChange={(e) => setAgent(prev => ({ ...prev, maxRetries: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>1</span>
+                    <span>{agent.maxRetries || 3}</span>
+                    <span>5</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center">
               <input
                 type="checkbox"

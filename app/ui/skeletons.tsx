@@ -246,11 +246,62 @@ export function AgentsListSkeleton() {
 }
 
 export function CreateAgentSkeleton() {
+  const shimmerClass = "relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-shimmer before:bg-gradient-to-r before:from-transparent before:via-gray-200 before:to-transparent";
+  
   return (
-    <div className="animate-pulse">
-      <div className="h-8 w-1/4 bg-gray-200 rounded mb-8" />
-      <div className="space-y-6">
-        <div className="h-[600px] bg-gray-200 rounded-xl" />
+    <div className="space-y-6">
+      <div className="bg-white shadow-sm ring-1 ring-gray-900/5 rounded-xl">
+        {/* Basic Information Section */}
+        <div className="p-6">
+          <div className="flex items-center mb-6">
+            <div className={`h-6 w-6 rounded bg-gray-100 mr-2 ${shimmerClass}`}></div>
+            <div className={`h-6 w-32 rounded bg-gray-100 ${shimmerClass}`}></div>
+          </div>
+          <div className={`h-10 w-full rounded bg-gray-100 ${shimmerClass}`}></div>
+        </div>
+
+        {/* Voice Selection Section */}
+        <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center mb-6">
+            <div className={`h-6 w-6 rounded bg-gray-100 mr-2 ${shimmerClass}`}></div>
+            <div className={`h-6 w-32 rounded bg-gray-100 ${shimmerClass}`}></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className={`h-12 rounded bg-gray-100 ${shimmerClass}`}></div>
+            ))}
+          </div>
+        </div>
+
+        {/* Background Audio Section */}
+        <div className="p-6 border-t border-gray-100">
+          <div className="flex items-center mb-6">
+            <div className={`h-6 w-6 rounded bg-gray-100 mr-2 ${shimmerClass}`}></div>
+            <div className={`h-6 w-32 rounded bg-gray-100 ${shimmerClass}`}></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className={`h-12 rounded bg-gray-100 ${shimmerClass}`}></div>
+            ))}
+          </div>
+        </div>
+
+        {/* Other Sections */}
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="p-6 border-t border-gray-100">
+            <div className="flex items-center mb-6">
+              <div className={`h-6 w-6 rounded bg-gray-100 mr-2 ${shimmerClass}`}></div>
+              <div className={`h-6 w-32 rounded bg-gray-100 ${shimmerClass}`}></div>
+            </div>
+            <div className={`h-24 w-full rounded bg-gray-100 ${shimmerClass}`}></div>
+          </div>
+        ))}
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-4">
+        <div className={`h-10 w-24 rounded bg-gray-100 ${shimmerClass}`}></div>
+        <div className={`h-10 w-32 rounded bg-gray-100 ${shimmerClass}`}></div>
       </div>
     </div>
   );

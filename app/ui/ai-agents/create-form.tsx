@@ -26,14 +26,17 @@ export function CreateAIAgentForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agent, setAgent] = useState({
     name: '',
-    voice: 'guillaume-11labs',
+    voiceName: 'guillaume-11labs',
     backgroundAudio: 'none',
     language: 'fr-FR',
     knowledgeBase: null as File | null,
     knowledgeBaseType: 'pdf',
     llmPrompt: '',
     allowInterruptions: false,
-    aiStartsConversation: false
+    aiStartsConversation: false,
+    silenceDetection: false,
+    silenceTimeout: 5,
+    maxRetries: 3
   });
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
@@ -142,46 +145,48 @@ export function CreateAIAgentForm() {
     console.log('Starting form submission...');
 
     try {
-        if (!session?.user?.id) {
-            setToast({
-                message: 'Vous devez être connecté pour créer un agent',
-                type: 'error'
-            });
-            return;
-        }
-
-        const formData = new FormData();
-        // Log form data being sent
-        formData.append('name', agent.name);
-        formData.append('voice_name', agent.voice);
-        formData.append('backgroundAudio', agent.backgroundAudio);
-        formData.append('language', agent.language);
-        formData.append('llmPrompt', agent.llmPrompt);
-        formData.append('allowInterruptions', agent.allowInterruptions.toString());
-        formData.append('aiStartsConversation', agent.aiStartsConversation.toString());
-
-        if (agent.knowledgeBase) {
-            formData.append('knowledgeBase', agent.knowledgeBase);
-        }
-
-        console.log('Form data prepared:', {
-            name: agent.name,
-            voice_name: agent.voice,
-            backgroundAudio: agent.backgroundAudio,
-            language: agent.language,
-            hasFile: !!agent.knowledgeBase
-        });
-
-        await createAIAgent(formData, session.user.id);
-        router.push('/dashboard/ai-agents');
-    } catch (error) {
-        console.error('Form submission error:', error);
+      if (!session?.user?.id) {
         setToast({
-            message: 'Une erreur est survenue lors de la création de l\'agent',
-            type: 'error'
+          message: 'Vous devez être connecté pour créer un agent',
+          type: 'error'
         });
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('name', agent.name);
+      formData.append('voice_name', agent.voiceName);
+      formData.append('background_audio', agent.backgroundAudio);
+      formData.append('language', agent.language);
+      formData.append('llm_prompt', agent.llmPrompt);
+      formData.append('allow_interruptions', agent.allowInterruptions.toString());
+      formData.append('ai_starts_conversation', agent.aiStartsConversation.toString());
+      formData.append('silence_detection', agent.silenceDetection.toString());
+      formData.append('silence_timeout', agent.silenceTimeout.toString());
+      formData.append('max_retries', agent.maxRetries.toString());
+
+      if (agent.knowledgeBase) {
+        formData.append('knowledge_base', agent.knowledgeBase);
+      }
+
+      console.log('Form data prepared:', {
+        name: agent.name,
+        voice_name: agent.voiceName,
+        background_audio: agent.backgroundAudio,
+        language: agent.language,
+        hasFile: !!agent.knowledgeBase
+      });
+
+      await createAIAgent(formData, session.user.id);
+      router.push('/dashboard/ai-agents');
+    } catch (error) {
+      console.error('Form submission error:', error);
+      setToast({
+        message: 'Une erreur est survenue lors de la création de l\'agent',
+        type: 'error'
+      });
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -218,16 +223,16 @@ export function CreateAIAgentForm() {
               <div
                 key={voice.id}
                 className={`flex items-center justify-between px-4 py-3 rounded-md ${
-                  agent.voice === voice.id
+                  agent.voiceName === voice.id
                     ? 'bg-blue-50 border-2 border-blue-200'
                     : 'bg-white border border-gray-300'
                 }`}
               >
                 <button
                   type="button"
-                  onClick={() => setAgent({ ...agent, voice: voice.id })}
+                  onClick={() => setAgent({ ...agent, voiceName: voice.id })}
                   className={`text-sm font-medium flex-grow text-left ${
-                    agent.voice === voice.id
+                    agent.voiceName === voice.id
                       ? 'text-blue-700'
                       : 'text-gray-700 hover:text-gray-900'
                   }`}
@@ -438,6 +443,76 @@ export function CreateAIAgentForm() {
                 </div>
               </div>
             </div>
+
+            <div className="flex items-center group relative">
+              <input
+                type="checkbox"
+                id="silenceDetection"
+                checked={agent.silenceDetection}
+                onChange={(e) => setAgent(prev => ({ ...prev, silenceDetection: e.target.checked }))}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+              />
+              <label htmlFor="silenceDetection" className="ml-2 block text-sm text-gray-900">
+                Détection de silence
+              </label>
+              <div className="relative inline-block ml-2">
+                <InformationCircleIcon className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block w-64 bg-gray-900 text-white text-sm rounded-lg p-2 shadow-lg">
+                  <div className="relative">
+                    <div className="text-xs">
+                      Nombre de secondes que l'IA attendra avant de parler lorsqu'elle détecte un silence. 
+                      Nombre maximum de tentatives de relance avant de raccrocher.
+                    </div>
+                    <div className="absolute w-3 h-3 bg-gray-900 transform rotate-45 left-1/2 -translate-x-1/2 -bottom-1.5"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {agent.silenceDetection && (
+              <div className="ml-6 space-y-4">
+                <div className="flex flex-col space-y-2">
+                  <label htmlFor="silenceTimeout" className="text-sm text-gray-700">
+                    Délai d'attente (secondes)
+                  </label>
+                  <input
+                    type="range"
+                    id="silenceTimeout"
+                    min="5"
+                    max="45"
+                    value={agent.silenceTimeout}
+                    onChange={(e) => setAgent(prev => ({ ...prev, silenceTimeout: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>5s</span>
+                    <span>{agent.silenceTimeout}s</span>
+                    <span>45s</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col space-y-2">
+                  <label htmlFor="maxRetries" className="text-sm text-gray-700">
+                    Nombre maximum de tentatives
+                  </label>
+                  <input
+                    type="range"
+                    id="maxRetries"
+                    min="1"
+                    max="5"
+                    value={agent.maxRetries}
+                    onChange={(e) => setAgent(prev => ({ ...prev, maxRetries: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>1</span>
+                    <span>{agent.maxRetries}</span>
+                    <span>5</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center">
               <input
                 type="checkbox"

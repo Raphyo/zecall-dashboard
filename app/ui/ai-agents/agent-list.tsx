@@ -8,6 +8,7 @@ import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 import { EmptyState } from './empty-state';
 import { WebRTCClient } from './webrtc-client';
+import { AgentsListSkeleton } from '../skeletons';
 
 // Voice display names mapping
 const voiceDisplayNames: { [key: string]: string } = {
@@ -197,7 +198,7 @@ export function AgentsList() {
   };
 
   if (status === 'loading' || loading) {
-    return <div>Chargement...</div>;
+    return <AgentsListSkeleton />;
   }
 
   if (!agents || agents.length === 0) {

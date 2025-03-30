@@ -176,8 +176,14 @@ export default function DashboardPage() {
           id: c.id,
           name: c.name,
           total_calls: c.contacts_count,
-          completed_calls: calls.filter(call => call.campaign_id === c.id).length,
-          progress: Math.round((calls.filter(call => call.campaign_id === c.id).length / c.contacts_count) * 100)
+          completed_calls: calls.filter(call => 
+            call.campaign_id === c.id && 
+            call.call_status === 'terminé'
+          ).length,
+          progress: Math.round((calls.filter(call => 
+            call.campaign_id === c.id && 
+            call.call_status === 'terminé'
+          ).length / c.contacts_count) * 100)
         }));
       setActiveCampaigns(active);
 

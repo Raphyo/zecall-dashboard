@@ -58,6 +58,7 @@ export default function NavLinks() {
       locked: isFeatureLocked('ai-agents'),
       onClick: handleLockedClick
     },
+    { name: 'Mes numéros', href: '/dashboard/phone-numbers', icon: PhoneIcon },
     { 
       name: 'Mes Campagnes', 
       href: '/dashboard/campaigns',
@@ -65,7 +66,6 @@ export default function NavLinks() {
       locked: isFeatureLocked('campaigns'),
       onClick: handleLockedClick
     },
-    { name: 'Mes numéros', href: '/dashboard/phone-numbers', icon: PhoneIcon },
     { name: 'Historique des appels', href: '/dashboard/call-history', icon: ClockIcon },
   ];
 
