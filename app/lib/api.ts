@@ -7,14 +7,17 @@ type CampaignStatus = 'en-cours' | 'planifiée' | 'terminée' | 'brouillon';
 export interface AIAgent {
     id: string;
     name: string;
-    voice: string;
+    voice_name: string;
+    background_audio: string;
     language: string;
-    personality: string;
-    speed: number;
-    call_type: string;
+    llm_prompt: string;
+    allow_interruptions: boolean;
+    ai_starts_conversation: boolean;
+    silence_detection: boolean;
+    silence_timeout: number;
+    max_retries: number;
     knowledge_base_path?: string;
     knowledge_base_type?: string;
-    llm_prompt: string;
     created_at: string;
     user_id: string;
 }
