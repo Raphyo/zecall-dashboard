@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { PencilIcon, TrashIcon, PlusIcon, PhoneIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
-import { getAIAgents, deleteAIAgent } from '@/app/lib/api';
+import { getAIAgents, deleteAIAgent, getAgentFunctions, removeAgentFunction } from '@/app/lib/api';
 import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 import { EmptyState } from './empty-state';
@@ -64,32 +64,76 @@ export function AgentsList() {
   }, [session, status]);
 
   const handleDelete = async (agentId: string) => {
+    console.log('Delete button clicked for agent:', agentId);
+    
     if (!confirm('Êtes-vous sûr de vouloir supprimer cet agent ?')) {
+      console.log('User cancelled deletion');
       return;
     }
+    console.log('User confirmed deletion');
 
     try {
       if (!session?.user?.id) {
         throw new Error('User ID not found');
       }
-      await deleteAIAgent(agentId, session.user.id);
-      setAgents(agents.filter(agent => agent.id !== agentId));
-      setToast({
-        message: 'Agent supprimé avec succès',
-        type: 'success'
-      });
+
+      console.log('Starting agent deletion process for agent:', agentId);
+
+      // First, get all functions for this agent
+      console.log('Fetching functions for agent:', agentId);
+      const functions = await getAgentFunctions(agentId);
+      console.log('Found functions:', functions);
+      
+      // Delete all functions first
+      if (functions && functions.length > 0) {
+        console.log(`Starting deletion of ${functions.length} functions`);
+        for (const func of functions) {
+          try {
+            console.log('Attempting to delete function:', { functionId: func.id, agentId });
+            // Convert function ID to number
+            const functionId = typeof func.id === 'string' ? parseInt(func.id, 10) : func.id;
+            await removeAgentFunction(agentId, functionId);
+            console.log('Successfully deleted function:', func.id);
+          } catch (error) {
+            console.error(`Failed to delete function ${func.id}:`, error);
+            // Continue with other functions even if one fails
+          }
+        }
+        console.log('Completed function deletion process');
+      } else {
+        console.log('No functions found for agent:', agentId);
+      }
+
+      // Then delete the agent
+      console.log('Starting agent deletion');
+      const response = await deleteAIAgent(agentId, session.user.id);
+      console.log('Agent deletion response:', response);
+      
+      // Only update UI if deletion was successful
+      if (response && response.message === "Agent deleted successfully") {
+        console.log('Agent deletion successful, updating UI');
+        setAgents(prev => prev.filter(agent => agent.id !== agentId));
+        setToast({
+          message: 'Agent supprimé avec succès',
+          type: 'success'
+        });
+      } else {
+        console.log('Agent deletion failed:', response);
+        throw new Error('La suppression a échoué');
+      }
     } catch (error: any) {
-      console.error('Error deleting agent:', error);
+      console.error('Error in deletion process:', error);
+
       if (error.message.includes('404')) {
         setToast({
           message: 'L\'agent n\'existe plus dans la base de données',
           type: 'error'
         });
-        // Remove the non-existent agent from the UI
-        setAgents(agents.filter(agent => agent.id !== agentId));
+        // Remove from UI if it doesn't exist in database
+        setAgents(prev => prev.filter(agent => agent.id !== agentId));
       } else {
         setToast({
-          message: 'Impossible de supprimer l\'agent car il est associé à un ou plusieurs numéros de téléphone',
+          message: 'Erreur lors de la suppression de l\'agent',
           type: 'error'
         });
       }
@@ -254,7 +298,10 @@ export function AgentsList() {
                 Modifier
               </button>
               <button
-                onClick={() => handleDelete(agent.id)}
+                onClick={() => {
+                  console.log('Delete button clicked in UI for agent:', agent.id);
+                  handleDelete(agent.id);
+                }}
                 className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200"
               >
                 <TrashIcon className="h-4 w-4" />

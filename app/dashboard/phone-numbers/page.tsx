@@ -107,12 +107,12 @@ export default function PhoneNumbersPage() {
 
       if (errors.length > 0) {
         setToast({
-          message: `Some updates failed: ${errors.join(', ')}`,
+          message: `Certaines mises à jour ont échoué : ${errors.join(', ')}`,
           type: 'error'
         });
       } else {
         setToast({
-          message: 'All changes saved successfully',
+          message: 'Toutes les modifications ont été enregistrées',
           type: 'success'
         });
         setPendingChanges({});
@@ -120,7 +120,7 @@ export default function PhoneNumbersPage() {
       }
     } catch (err) {
       setToast({
-        message: 'Failed to save changes',
+        message: 'Échec de l\'enregistrement des modifications',
         type: 'error'
       });
     } finally {
