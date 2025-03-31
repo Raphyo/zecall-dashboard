@@ -100,6 +100,21 @@ export default function PhoneNumbersPage() {
           if (!response.ok) {
             throw new Error(`Failed to update phone number ${phoneNumberId}`);
           }
+
+          // Call the webhook after successful phone number update
+          const webhookResponse = await fetch(
+            `${ORCHESTRATOR_URL}/webhook/config-update?phone_number_id=${encodeURIComponent(phoneNumberId)}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              }
+            }
+          );
+
+          if (!webhookResponse.ok) {
+            throw new Error(`Failed to update configuration for phone number ${phoneNumberId}`);
+          }
         } catch (err) {
           errors.push(`Failed to update phone number ${phoneNumberId}`);
         }

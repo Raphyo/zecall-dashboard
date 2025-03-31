@@ -81,7 +81,7 @@ export function AgentsList() {
 
       // First, get all functions for this agent
       console.log('Fetching functions for agent:', agentId);
-      const functions = await getAgentFunctions(agentId);
+      const functions = await getAgentFunctions(agentId, session.user.id);
       console.log('Found functions:', functions);
       
       // Delete all functions first
@@ -92,7 +92,7 @@ export function AgentsList() {
             console.log('Attempting to delete function:', { functionId: func.id, agentId });
             // Convert function ID to number
             const functionId = typeof func.id === 'string' ? parseInt(func.id, 10) : func.id;
-            await removeAgentFunction(agentId, functionId);
+            await removeAgentFunction(agentId, functionId, session.user.id);
             console.log('Successfully deleted function:', func.id);
           } catch (error) {
             console.error(`Failed to delete function ${func.id}:`, error);

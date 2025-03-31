@@ -20,28 +20,33 @@ const voiceSamples = [
   { id: 'jessy-11labs', name: 'Jessy (F)', gender: 'female', url: '/api/audio?file=voices%2FJessy-11labs.mp3' },
 ];
 
-interface CustomFunction {
+// Add these type definitions at the top of the file, near other interfaces
+interface BaseConfig {
   name: string;
   description?: string;
+  active: boolean;
+}
+
+interface ParsedParameters {
+  transferTo?: string;
+  [key: string]: any;
+}
+
+// Update the existing interfaces
+interface CustomFunction extends BaseConfig {
   url: string;
   apiTimeout?: number;
   parameters?: string;
   speakDuringExecution: boolean;
   speakAfterExecution: boolean;
-  active: boolean;
 }
 
-interface TransferFunction {
-  name: string;
-  description?: string;
+interface TransferFunction extends BaseConfig {
   transferTo: string;
-  active: boolean;
 }
 
-interface EndCallFunction {
-  name: string;
-  description?: string;
-  active: boolean;
+interface EndCallFunction extends BaseConfig {
+  // No additional properties needed
 }
 
 interface AgentFunction {
@@ -193,6 +198,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setToast(null);
 
     try {
       console.log('Starting form submission with data:', agent);
@@ -272,10 +278,10 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
             if (func.id) {
               // Update existing function - only pass the active state
               const functionId = typeof func.id === 'string' ? parseInt(func.id, 10) : func.id;
-              await updateAgentFunction(savedAgent.id, functionId, func.config.active);
+              await updateAgentFunction(savedAgent.id, functionId, func.config.active, session.user.id);
             } else {
               // Create new function
-              await createAgentFunction(savedAgent.id, functionData);
+              await createAgentFunction(savedAgent.id, functionData, session.user.id);
             }
           } catch (error: any) {
             console.error('Error creating/updating function:', error);
@@ -336,22 +342,82 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   };
 
   const handleEditFunction = (index: number, func: AgentFunction) => {
-    setEditingFunction({ index, function: func });
-    setSelectedFunctionType(func.type);
-    setFunctionConfig(func.config);
+    console.log('handleEditFunction called with:', { index, func });
+    
+    // Ensure we have a valid type
+    if (!func.type) {
+      console.error('Function type is undefined:', func);
+      // Determine type based on function properties
+      if (func.config.name === 'end_call') {
+        func.type = 'end_call';
+      } else if ('transferTo' in func.config) {
+        func.type = 'transfer';
+      } else {
+        func.type = 'custom';
+      }
+      console.log('Determined function type:', func.type);
+    }
+
+    console.log('Current modal state before edit:', {
+      showFunctionModal,
+      selectedFunctionType,
+      editingFunction,
+      functionConfig
+    });
+    
+    // First set the editing state
+    const newEditingState = { index, function: func };
+    const newFunctionConfig = { ...func.config };
+    
+    // Ensure we set all states in the correct order
+    setEditingFunction(newEditingState);
+    setFunctionConfig(newFunctionConfig);
+    setSelectedFunctionType(func.type as 'end_call' | 'transfer' | 'custom');
     setShowFunctionModal(true);
+
+    // Log after state updates are queued
+    setTimeout(() => {
+      console.log('Modal state after edit:', {
+        showFunctionModal: true,
+        selectedFunctionType: func.type,
+        editingFunction: newEditingState,
+        functionConfig: newFunctionConfig
+      });
+    }, 0);
+  };
+
+  const handleModalSave = () => {
+    if (editingFunction) {
+      // When editing, use the current function type if selectedFunctionType is not set
+      const type = selectedFunctionType || editingFunction.function.type;
+      if (functionConfig) {
+        handleAddFunction(type as 'end_call' | 'transfer' | 'custom', functionConfig);
+      }
+    } else if (selectedFunctionType && functionConfig) {
+      handleAddFunction(selectedFunctionType, functionConfig);
+    }
+  };
+
+  const openFunctionModal = () => {
+    console.log('Opening function modal for new function');
+    setShowFunctionModal(true);
+    setSelectedFunctionType(null);
+    setFunctionConfig(null);
+    setEditingFunction(null);
   };
 
   const handleAddFunction = (type: 'end_call' | 'transfer' | 'custom', config: any) => {
-    console.log('Adding/Updating function:', type, config);
+    console.log('handleAddFunction called with:', { type, config, editingFunction });
 
     if (editingFunction !== null) {
       // Update existing function
+      console.log('Updating existing function at index:', editingFunction.index);
       setFunctions(prev => prev.map((func, idx) => 
         idx === editingFunction.index ? { type, config } : func
       ));
     } else {
       // Add new function
+      console.log('Adding new function');
       setFunctions(prev => [...prev, { type, config }]);
     }
     
@@ -374,10 +440,14 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
         throw new Error('Agent ID is required to update function status');
       }
 
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+
       // Convert function ID to number if it's a string
       const numericFunctionId = typeof functionId === 'string' ? parseInt(functionId, 10) : functionId;
       // Make the API call in the background
-      await updateAgentFunction(agentId, numericFunctionId, isActive);
+      await updateAgentFunction(agentId, numericFunctionId, isActive, session.user.id);
     } catch (error: any) {
       // If the API call fails, revert the optimistic update
       setFunctions(functions.map(func => 
@@ -394,68 +464,101 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     }
   };
 
-  const handleRemoveFunction = async (index: number) => {
-    const functionToRemove = functions[index];
-    
-    // Optimistically update UI
-    setFunctions(prev => prev.filter((_, idx) => idx !== index));
-
-    // If the function has an ID (exists on the server), remove it via API
-    if (functionToRemove.id && agentId) {
-      try {
-        // Convert function ID to number if it's a string
-        const functionId = typeof functionToRemove.id === 'string' ? parseInt(functionToRemove.id, 10) : functionToRemove.id;
-        await removeAgentFunction(agentId, functionId);
-      } catch (error: any) {
-        // Revert the UI change if the API call fails
-        setFunctions(prev => {
-          const newFunctions = [...prev];
-          newFunctions.splice(index, 0, functionToRemove);
-          return newFunctions;
-        });
-        
-        console.error('Error removing function:', error);
-        setToast({
-          message: `Erreur lors de la suppression de la fonction: ${error.message}`,
-          type: 'error'
-        });
+  const handleDeleteFunction = async (functionId: string | number) => {
+    try {
+      if (!agentId) {
+        throw new Error('Agent ID is required to delete function');
       }
-    }
-  };
 
-  const openFunctionModal = () => {
-    setShowFunctionModal(true);
-    setSelectedFunctionType(null);
-    setFunctionConfig(null);
-    setEditingFunction(null);
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+
+      // Convert function ID to number if it's a string
+      const numericFunctionId = typeof functionId === 'string' ? parseInt(functionId, 10) : functionId;
+      await removeAgentFunction(agentId, numericFunctionId, session.user.id);
+      
+      // Update local state
+      setFunctions(functions.filter(func => func.id !== functionId));
+    } catch (error: any) {
+      console.error('Error deleting function:', error);
+      setToast({
+        message: `Erreur lors de la suppression de la fonction: ${error.message}`,
+        type: 'error'
+      });
+    }
   };
 
   // Load existing functions if editing an agent
   useEffect(() => {
     const loadAgentFunctions = async () => {
-      if (agentId) {
+      if (agentId && session?.user?.id) {
         try {
-          const fetchedFunctions = await getAgentFunctions(agentId);
+          const fetchedFunctions = await getAgentFunctions(agentId, session.user.id);
+          console.log('Raw fetched functions:', fetchedFunctions);
+          
           // Transform the fetched functions to match our local format
-          const transformedFunctions = fetchedFunctions.map((func: any) => ({
-            id: func.id,
-            type: func.type,
-            config: {
-              name: func.name,
-              description: func.description,
-              active: func.is_active,
-              ...(func.type === 'custom' && {
-                url: func.external_config?.url,
-                apiTimeout: func.external_config?.apiTimeout,
-                parameters: func.parameters,
-                speakDuringExecution: func.external_config?.speakDuringExecution,
-                speakAfterExecution: func.external_config?.speakAfterExecution,
-              }),
-              ...(func.type === 'transfer' && {
-                transferTo: JSON.parse(func.parameters || '{}').transferTo,
-              })
+          const transformedFunctions = fetchedFunctions.map((func: any) => {
+            console.log('Processing function:', func);
+            
+            // Safely parse parameters
+            let parsedParameters: ParsedParameters = {};
+            try {
+              if (typeof func.parameters === 'string') {
+                parsedParameters = JSON.parse(func.parameters || '{}');
+              } else if (func.parameters && typeof func.parameters === 'object') {
+                parsedParameters = func.parameters;
+              }
+            } catch (e) {
+              console.warn('Failed to parse parameters for function:', func.name, e);
+              parsedParameters = {};
             }
-          }));
+            
+            // Determine the function type based on the function's properties
+            let type: 'end_call' | 'transfer' | 'custom';
+            if (func.name === 'end_call') {
+              type = 'end_call';
+            } else if (parsedParameters.transferTo) {
+              type = 'transfer';
+            } else {
+              type = 'custom';
+            }
+
+            // Create the base config
+            const baseConfig: BaseConfig = {
+              name: func.name || '',
+              description: func.description,
+              active: func.is_active || false,
+            };
+
+            // Add type-specific properties
+            let config: CustomFunction | TransferFunction | EndCallFunction;
+            if (type === 'custom') {
+              config = {
+                ...baseConfig,
+                url: func.external_config?.url || '',
+                apiTimeout: func.external_config?.apiTimeout || 120000,
+                parameters: typeof func.parameters === 'string' ? func.parameters : JSON.stringify(func.parameters),
+                speakDuringExecution: func.external_config?.speakDuringExecution || false,
+                speakAfterExecution: func.external_config?.speakAfterExecution || true,
+              };
+            } else if (type === 'transfer') {
+              config = {
+                ...baseConfig,
+                transferTo: parsedParameters.transferTo || '',
+              };
+            } else {
+              config = baseConfig;
+            }
+
+            return {
+              id: func.id,
+              type,
+              config
+            };
+          });
+
+          console.log('Transformed functions:', transformedFunctions);
           setFunctions(transformedFunctions);
         } catch (error) {
           console.error('Error loading agent functions:', error);
@@ -468,7 +571,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     };
 
     loadAgentFunctions();
-  }, [agentId]);
+  }, [agentId, session?.user?.id]);
 
   // Load agent details when editing
   useEffect(() => {
@@ -476,6 +579,15 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       setSelectedFileName(initialData.knowledge_base_path.split('/').pop() || '');
     }
   }, [initialData]);
+
+  useEffect(() => {
+    console.log('Modal state changed:', {
+      showFunctionModal,
+      selectedFunctionType,
+      editingFunction,
+      functionConfig
+    });
+  }, [showFunctionModal, selectedFunctionType, editingFunction, functionConfig]);
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col min-h-0 max-h-full">
@@ -855,7 +967,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleRemoveFunction(index)}
+                          onClick={() => func.id ? handleDeleteFunction(func.id) : null}
                           className="inline-flex items-center p-1.5 border border-red-300 rounded-full text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                           title="Supprimer la fonction"
                         >
@@ -934,8 +1046,8 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
       {/* Function Modal */}
       {showFunctionModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
             {/* Modal Header */}
             <div className="p-6 border-b">
               <h3 className="text-lg font-medium">
@@ -943,289 +1055,292 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               </h3>
             </div>
 
-            {/* Function Type Selection */}
-            {!selectedFunctionType && (
-              <div className="p-6">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFunctionType('end_call');
-                      setFunctionConfig({
-                        name: 'end_call',
-                        active: true
-                      });
-                    }}
-                    className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
-                  >
-                    <PhoneIcon className="h-8 w-8 text-gray-600 mb-2" />
-                    <span className="text-sm font-medium">Fin d'appel</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFunctionType('transfer');
-                      setFunctionConfig({
-                        name: 'transfer_call',
-                        transferTo: '',
-                        active: true
-                      });
-                    }}
-                    className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
-                  >
-                    <ArrowPathRoundedSquareIcon className="h-8 w-8 text-gray-600 mb-2" />
-                    <span className="text-sm font-medium">Transfert d'appel</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFunctionType('custom');
-                      setFunctionConfig({
-                        name: '',
-                        url: '',
-                        speakDuringExecution: false,
-                        speakAfterExecution: true,
-                        active: true
-                      });
-                    }}
-                    className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
-                  >
-                    <Squares2X2Icon className="h-8 w-8 text-gray-600 mb-2" />
-                    <span className="text-sm font-medium">Fonction personnalisée</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* End Call Configuration */}
-            {selectedFunctionType === 'end_call' && (
-              <div className="p-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Nom</label>
-                    <input
-                      type="text"
-                      value={(functionConfig as EndCallFunction).name}
-                      onChange={(e) => setFunctionConfig({ 
-                        ...functionConfig as EndCallFunction,
-                        name: e.target.value,
-                        active: true
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      placeholder="end_call"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Description (Optionnel)</label>
-                    <input
-                      type="text"
-                      value={(functionConfig as EndCallFunction).description || ''}
-                      onChange={(e) => setFunctionConfig({ 
-                        ...functionConfig as EndCallFunction,
-                        description: e.target.value 
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      placeholder="Entrez une description"
-                    />
+            {/* Modal Content - Make this section scrollable */}
+            <div className="flex-1 overflow-y-auto">
+              {/* Function Type Selection */}
+              {!selectedFunctionType && !editingFunction && (
+                <div className="p-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFunctionType('end_call');
+                        setFunctionConfig({
+                          name: 'end_call',
+                          active: true
+                        });
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <PhoneIcon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">Fin d'appel</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFunctionType('transfer');
+                        setFunctionConfig({
+                          name: 'transfer_call',
+                          transferTo: '',
+                          active: true
+                        });
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <ArrowPathRoundedSquareIcon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">Transfert d'appel</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFunctionType('custom');
+                        setFunctionConfig({
+                          name: '',
+                          url: '',
+                          speakDuringExecution: false,
+                          speakAfterExecution: true,
+                          active: true
+                        });
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <Squares2X2Icon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">Fonction personnalisée</span>
+                    </button>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Transfer Call Configuration */}
-            {selectedFunctionType === 'transfer' && (
-              <div className="p-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Nom</label>
-                    <input
-                      type="text"
-                      value={(functionConfig as TransferFunction).name}
-                      onChange={(e) => setFunctionConfig({ 
-                        ...functionConfig as TransferFunction,
-                        name: e.target.value,
-                        active: true
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      placeholder="transfer_call"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Description (Optionnel)</label>
-                    <input
-                      type="text"
-                      value={(functionConfig as TransferFunction).description || ''}
-                      onChange={(e) => setFunctionConfig({ 
-                        ...functionConfig as TransferFunction,
-                        description: e.target.value 
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      placeholder="Transférer l'appel vers un agent humain"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Numéro de transfert <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={(functionConfig as TransferFunction).transferTo}
-                      onChange={(e) => setFunctionConfig({ 
-                        ...functionConfig as TransferFunction,
-                        transferTo: e.target.value 
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      placeholder="+33123456789"
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Custom Function Configuration */}
-            {selectedFunctionType === 'custom' && (
-              <div className="p-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Nom <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={(functionConfig as CustomFunction).name}
-                      onChange={(e) => setFunctionConfig({ 
-                        ...functionConfig as CustomFunction,
-                        name: e.target.value,
-                        active: true
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      placeholder="Entrez le nom de la fonction"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Description <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={(functionConfig as CustomFunction).description || ''}
-                      onChange={(e) => setFunctionConfig({ 
-                        ...functionConfig as CustomFunction,
-                        description: e.target.value 
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      placeholder="Entrez une description"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      URL <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={(functionConfig as CustomFunction).url}
-                      onChange={(e) => setFunctionConfig({ 
-                        ...functionConfig as CustomFunction,
-                        url: e.target.value 
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      placeholder="Entrez l'URL de la fonction"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Délai d'expiration API (Optionnel)</label>
-                    <input
-                      type="number"
-                      value={(functionConfig as CustomFunction).apiTimeout || 120000}
-                      onChange={(e) => setFunctionConfig({ 
-                        ...functionConfig as CustomFunction,
-                        apiTimeout: Number(e.target.value) 
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                      placeholder="Délai en millisecondes"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Paramètres (Optionnel)</label>
-                    <p className="mt-1 text-sm text-gray-500 mb-2">
-                      JSON schema qui définit le format dans lequel le LLM retournera. Veuillez consulter la documentation.
-                    </p>
-                    <textarea
-                      value={(functionConfig as CustomFunction).parameters || ''}
-                      onChange={(e) => setFunctionConfig({ 
-                        ...functionConfig as CustomFunction,
-                        parameters: e.target.value 
-                      })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm h-32 bg-gray-900 text-gray-100"
-                      placeholder="Enter JSON Schema here..."
-                    />
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFunctionConfig({ 
-                          ...functionConfig as CustomFunction,
-                          parameters: JSON.stringify({
-                            name: "search_product",
-                            description: "Search for a product in the catalog",
-                            properties: {
-                              query: {
-                                type: "string",
-                                description: "Search query"
-                              }
-                            },
-                            required: ["query"]
-                          }, null, 2)
+              {/* End Call Configuration */}
+              {(selectedFunctionType === 'end_call' || (editingFunction?.function.type === 'end_call' && !selectedFunctionType)) && (
+                <div className="p-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Nom</label>
+                      <input
+                        type="text"
+                        value={(functionConfig as EndCallFunction)?.name || ''}
+                        onChange={(e) => setFunctionConfig({ 
+                          ...functionConfig as EndCallFunction,
+                          name: e.target.value,
+                          active: true
                         })}
-                        className="px-3 py-1 text-sm bg-gray-900 text-white rounded-full hover:bg-gray-800"
-                      >
-                        example
-                      </button>
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="end_call"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Description (Optionnel)</label>
+                      <input
+                        type="text"
+                        value={(functionConfig as EndCallFunction)?.description || ''}
+                        onChange={(e) => setFunctionConfig({ 
+                          ...functionConfig as EndCallFunction,
+                          description: e.target.value 
+                        })}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="Entrez une description"
+                      />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="flex items-center">
+                </div>
+              )}
+
+              {/* Transfer Call Configuration */}
+              {(selectedFunctionType === 'transfer' || (editingFunction?.function.type === 'transfer' && !selectedFunctionType)) && (
+                <div className="p-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Nom</label>
                       <input
-                        type="checkbox"
-                        checked={(functionConfig as CustomFunction).speakDuringExecution}
+                        type="text"
+                        value={(functionConfig as TransferFunction)?.name || ''}
                         onChange={(e) => setFunctionConfig({ 
-                          ...functionConfig as CustomFunction,
-                          speakDuringExecution: e.target.checked 
+                          ...functionConfig as TransferFunction,
+                          name: e.target.value,
+                          active: true
                         })}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="transfer_call"
                       />
-                      <span className="ml-2 text-sm text-gray-700">Parler pendant l'exécution</span>
-                    </label>
-                    <p className="text-xs text-gray-500 ml-6">
-                      Si la fonction prend plus de 2 secondes, l'agent peut dire quelque chose comme : "Je vérifie cela pour vous."
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="flex items-center">
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Description (Optionnel)</label>
                       <input
-                        type="checkbox"
-                        checked={(functionConfig as CustomFunction).speakAfterExecution}
+                        type="text"
+                        value={(functionConfig as TransferFunction)?.description || ''}
                         onChange={(e) => setFunctionConfig({ 
-                          ...functionConfig as CustomFunction,
-                          speakAfterExecution: e.target.checked 
+                          ...functionConfig as TransferFunction,
+                          description: e.target.value 
                         })}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="Transférer l'appel vers un agent humain"
                       />
-                      <span className="ml-2 text-sm text-gray-700">Parler après l'exécution</span>
-                    </label>
-                    <p className="text-xs text-gray-500 ml-6">
-                      Désélectionnez si vous souhaitez exécuter la fonction silencieusement, par exemple pour télécharger le résultat de l'appel sur le serveur.
-                    </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Numéro de transfert <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={(functionConfig as TransferFunction)?.transferTo || ''}
+                        onChange={(e) => setFunctionConfig({ 
+                          ...functionConfig as TransferFunction,
+                          transferTo: e.target.value 
+                        })}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="+33123456789"
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Modal Footer */}
-            <div className="p-6 border-t flex justify-end gap-4">
+              {/* Custom Function Configuration */}
+              {(selectedFunctionType === 'custom' || (editingFunction?.function.type === 'custom' && !selectedFunctionType)) && (
+                <div className="p-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Nom <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={(functionConfig as CustomFunction)?.name || ''}
+                        onChange={(e) => setFunctionConfig({ 
+                          ...functionConfig as CustomFunction,
+                          name: e.target.value,
+                          active: true
+                        })}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="Entrez le nom de la fonction"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Description <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={(functionConfig as CustomFunction)?.description || ''}
+                        onChange={(e) => setFunctionConfig({ 
+                          ...functionConfig as CustomFunction,
+                          description: e.target.value 
+                        })}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="Entrez une description"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        URL <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={(functionConfig as CustomFunction)?.url || ''}
+                        onChange={(e) => setFunctionConfig({ 
+                          ...functionConfig as CustomFunction,
+                          url: e.target.value 
+                        })}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="Entrez l'URL de la fonction"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Délai d'expiration API (Optionnel)</label>
+                      <input
+                        type="number"
+                        value={(functionConfig as CustomFunction)?.apiTimeout || 120000}
+                        onChange={(e) => setFunctionConfig({ 
+                          ...functionConfig as CustomFunction,
+                          apiTimeout: Number(e.target.value) 
+                        })}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="Délai en millisecondes"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Paramètres (Optionnel)</label>
+                      <p className="mt-1 text-sm text-gray-500 mb-2">
+                        JSON schema qui définit le format dans lequel le LLM retournera. Veuillez consulter la documentation.
+                      </p>
+                      <textarea
+                        value={(functionConfig as CustomFunction)?.parameters || ''}
+                        onChange={(e) => setFunctionConfig({ 
+                          ...functionConfig as CustomFunction,
+                          parameters: e.target.value 
+                        })}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm h-32 bg-gray-900 text-gray-100"
+                        placeholder="Enter JSON Schema here..."
+                      />
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFunctionConfig({ 
+                            ...functionConfig as CustomFunction,
+                            parameters: JSON.stringify({
+                              name: "search_product",
+                              description: "Search for a product in the catalog",
+                              properties: {
+                                query: {
+                                  type: "string",
+                                  description: "Search query"
+                                }
+                              },
+                              required: ["query"]
+                            }, null, 2)
+                          })}
+                          className="px-3 py-1 text-sm bg-gray-900 text-white rounded-full hover:bg-gray-800"
+                        >
+                          example
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={(functionConfig as CustomFunction)?.speakDuringExecution}
+                          onChange={(e) => setFunctionConfig({ 
+                            ...functionConfig as CustomFunction,
+                            speakDuringExecution: e.target.checked 
+                          })}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">Parler pendant l'exécution</span>
+                      </label>
+                      <p className="text-xs text-gray-500 ml-6">
+                        Si la fonction prend plus de 2 secondes, l'agent peut dire quelque chose comme : "Je vérifie cela pour vous."
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={(functionConfig as CustomFunction)?.speakAfterExecution}
+                          onChange={(e) => setFunctionConfig({ 
+                            ...functionConfig as CustomFunction,
+                            speakAfterExecution: e.target.checked 
+                          })}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="ml-2 text-sm text-gray-700">Parler après l'exécution</span>
+                      </label>
+                      <p className="text-xs text-gray-500 ml-6">
+                        Désélectionnez si vous souhaitez exécuter la fonction silencieusement, par exemple pour télécharger le résultat de l'appel sur le serveur.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer - Keep it fixed at bottom */}
+            <div className="p-6 border-t flex justify-end gap-4 bg-white">
               <button
                 type="button"
                 onClick={() => {
@@ -1240,11 +1355,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (selectedFunctionType && functionConfig) {
-                    handleAddFunction(selectedFunctionType, functionConfig);
-                  }
-                }}
+                onClick={handleModalSave}
                 className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
               >
                 {editingFunction ? 'Mettre à jour' : 'Enregistrer'}

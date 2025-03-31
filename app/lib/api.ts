@@ -349,17 +349,9 @@ export async function deleteCall(callIds: string[], userId: string): Promise<voi
 }
 
 // Agent Functions API
-export async function getAgentFunctions(agentId: string) {
+export async function getAgentFunctions(agentId: string, userId: string) {
   try {
-    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions`;
-    console.log('Fetching functions from API:', {
-      url,
-      method: 'GET',
-      ANALYTICS_URL,
-      agentId,
-      fullUrl: url
-    });
-
+    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions?user_id=${userId}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -367,41 +359,27 @@ export async function getAgentFunctions(agentId: string) {
       },
     });
 
-    console.log('Get functions API response:', {
-      status: response.status,
-      ok: response.ok,
-      statusText: response.statusText,
-      url: response.url
-    });
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
-      console.error('Get functions API error:', errorData);
-      throw new Error('Failed to fetch agent functions');
+      throw new Error(`Failed to fetch agent functions: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
-    console.log('Get functions API success:', {
-      data,
-      dataType: typeof data,
-      isArray: Array.isArray(data),
-      length: Array.isArray(data) ? data.length : 'not an array'
-    });
-    return data;
+    return await response.json();
   } catch (error) {
     console.error('Error in getAgentFunctions:', error);
     throw error;
   }
 }
 
-export async function removeAgentFunction(agentId: string, functionId: number) {
+export async function removeAgentFunction(agentId: string, functionId: number, userId: string) {
   try {
-    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions/${functionId}`;
+    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions/${functionId}?user_id=${userId}`;
     console.log('Calling removeAgentFunction API:', {
       url,
       method: 'DELETE',
       agentId,
-      functionId
+      functionId,
+      userId
     });
 
     const response = await fetch(url, {
@@ -432,12 +410,13 @@ export async function removeAgentFunction(agentId: string, functionId: number) {
   }
 }
 
-export async function createAgentFunction(agentId: string, functionData: any) {
+export async function createAgentFunction(agentId: string, functionData: any, userId: string) {
   try {
-    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions`;
+    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions?user_id=${userId}`;
     console.log('Creating agent function with data:', {
       url,
       agentId,
+      userId,
       functionData: JSON.stringify(functionData, null, 2)
     });
 
@@ -468,14 +447,15 @@ export async function createAgentFunction(agentId: string, functionData: any) {
   }
 }
 
-export async function updateAgentFunction(agentId: string, functionId: number, isActive: boolean) {
+export async function updateAgentFunction(agentId: string, functionId: number, isActive: boolean, userId: string) {
   try {
-    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions/${functionId}`;
+    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions/${functionId}?user_id=${userId}`;
     console.log('Updating agent function with:', { 
       url,
       agentId, 
       functionId, 
       isActive,
+      userId,
       requestBody: JSON.stringify({ is_active: isActive })
     });
     
