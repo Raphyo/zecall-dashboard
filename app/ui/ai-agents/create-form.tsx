@@ -197,12 +197,10 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     setIsSubmitting(true);
-    setToast(null);
-
     try {
-      console.log('Starting form submission with data:', agent);
-
       const formData = new FormData();
       formData.append('name', agent.name);
       formData.append('voice_name', agent.voiceName);
@@ -221,25 +219,18 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       formData.append('user_id', session.user.id);
 
       if (agent.knowledgeBase) {
-        console.log('Adding knowledge base file:', agent.knowledgeBase.name);
         formData.append('knowledge_base', agent.knowledgeBase);
       }
 
-      let savedAgent;
+      let savedAgent: AIAgent;
       if (agentId) {
-        // Update existing agent
-        console.log('Updating agent:', agentId);
         savedAgent = await updateAIAgent(agentId, formData);
       } else {
-        // Create new agent
-        console.log('Creating new agent');
         savedAgent = await createAIAgent(formData, session.user.id);
       }
-      console.log('Agent saved successfully:', savedAgent);
 
       // Create or update functions for the agent
       if (functions.length > 0) {
-        console.log('Processing functions for agent:', savedAgent.id);
         for (const func of functions) {
           let functionData: any = {
             name: func.config.name,
@@ -327,13 +318,8 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
       router.push('/dashboard/ai-agents');
     } catch (error: any) {
-      console.error('Detailed error in handleSubmit:', {
-        error,
-        message: error.message,
-        stack: error.stack
-      });
       setToast({
-        message: `Erreur: ${error.message || 'Une erreur est survenue lors de la création de l\'agent'}`,
+        message: `Error: ${error.message || 'An error occurred while saving the agent'}`,
         type: 'error'
       });
     } finally {
@@ -342,12 +328,8 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   };
 
   const handleEditFunction = (index: number, func: AgentFunction) => {
-    console.log('handleEditFunction called with:', { index, func });
-    
     // Ensure we have a valid type
     if (!func.type) {
-      console.error('Function type is undefined:', func);
-      // Determine type based on function properties
       if (func.config.name === 'end_call') {
         func.type = 'end_call';
       } else if ('transferTo' in func.config) {
@@ -355,15 +337,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       } else {
         func.type = 'custom';
       }
-      console.log('Determined function type:', func.type);
     }
-
-    console.log('Current modal state before edit:', {
-      showFunctionModal,
-      selectedFunctionType,
-      editingFunction,
-      functionConfig
-    });
     
     // First set the editing state
     const newEditingState = { index, function: func };
@@ -374,16 +348,6 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     setFunctionConfig(newFunctionConfig);
     setSelectedFunctionType(func.type as 'end_call' | 'transfer' | 'custom');
     setShowFunctionModal(true);
-
-    // Log after state updates are queued
-    setTimeout(() => {
-      console.log('Modal state after edit:', {
-        showFunctionModal: true,
-        selectedFunctionType: func.type,
-        editingFunction: newEditingState,
-        functionConfig: newFunctionConfig
-      });
-    }, 0);
   };
 
   const handleModalSave = () => {
@@ -399,7 +363,6 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   };
 
   const openFunctionModal = () => {
-    console.log('Opening function modal for new function');
     setShowFunctionModal(true);
     setSelectedFunctionType(null);
     setFunctionConfig(null);
@@ -407,17 +370,13 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   };
 
   const handleAddFunction = (type: 'end_call' | 'transfer' | 'custom', config: any) => {
-    console.log('handleAddFunction called with:', { type, config, editingFunction });
-
     if (editingFunction !== null) {
       // Update existing function
-      console.log('Updating existing function at index:', editingFunction.index);
       setFunctions(prev => prev.map((func, idx) => 
         idx === editingFunction.index ? { type, config } : func
       ));
     } else {
       // Add new function
-      console.log('Adding new function');
       setFunctions(prev => [...prev, { type, config }]);
     }
     
@@ -495,12 +454,9 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       if (agentId && session?.user?.id) {
         try {
           const fetchedFunctions = await getAgentFunctions(agentId, session.user.id);
-          console.log('Raw fetched functions:', fetchedFunctions);
           
           // Transform the fetched functions to match our local format
           const transformedFunctions = fetchedFunctions.map((func: any) => {
-            console.log('Processing function:', func);
-            
             // Safely parse parameters
             let parsedParameters: ParsedParameters = {};
             try {
@@ -558,7 +514,6 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
             };
           });
 
-          console.log('Transformed functions:', transformedFunctions);
           setFunctions(transformedFunctions);
         } catch (error) {
           console.error('Error loading agent functions:', error);
@@ -588,6 +543,13 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       functionConfig
     });
   }, [showFunctionModal, selectedFunctionType, editingFunction, functionConfig]);
+
+  const handleModalKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleModalSave();
+    }
+  };
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col min-h-0 max-h-full">
@@ -1047,7 +1009,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       {/* Function Modal */}
       {showFunctionModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col" onKeyDown={handleModalKeyDown}>
             {/* Modal Header */}
             <div className="p-6 border-b">
               <h3 className="text-lg font-medium">
@@ -1125,6 +1087,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           name: e.target.value,
                           active: true
                         })}
+                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="end_call"
                       />
@@ -1138,6 +1101,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           ...functionConfig as EndCallFunction,
                           description: e.target.value 
                         })}
+                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Entrez une description"
                       />
@@ -1160,6 +1124,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           name: e.target.value,
                           active: true
                         })}
+                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="transfer_call"
                       />
@@ -1173,6 +1138,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           ...functionConfig as TransferFunction,
                           description: e.target.value 
                         })}
+                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Transférer l'appel vers un agent humain"
                       />
@@ -1188,6 +1154,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           ...functionConfig as TransferFunction,
                           transferTo: e.target.value 
                         })}
+                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="+33123456789"
                         required
@@ -1213,6 +1180,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           name: e.target.value,
                           active: true
                         })}
+                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Entrez le nom de la fonction"
                         required
@@ -1229,6 +1197,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           ...functionConfig as CustomFunction,
                           description: e.target.value 
                         })}
+                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Entrez une description"
                         required
@@ -1245,6 +1214,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           ...functionConfig as CustomFunction,
                           url: e.target.value 
                         })}
+                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Entrez l'URL de la fonction"
                         required
@@ -1259,6 +1229,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           ...functionConfig as CustomFunction,
                           apiTimeout: Number(e.target.value) 
                         })}
+                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Délai en millisecondes"
                       />
@@ -1351,15 +1322,17 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                 }}
                 className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
               >
-                Annuler
+                {!selectedFunctionType && !editingFunction ? 'Annuler' : 'Annuler'}
               </button>
-              <button
-                type="button"
-                onClick={handleModalSave}
-                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-              >
-                {editingFunction ? 'Mettre à jour' : 'Enregistrer'}
-              </button>
+              {(selectedFunctionType || editingFunction) && (
+                <button
+                  type="button"
+                  onClick={handleModalSave}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  {editingFunction ? 'Mettre à jour' : 'Enregistrer'}
+                </button>
+              )}
             </div>
           </div>
         </div>

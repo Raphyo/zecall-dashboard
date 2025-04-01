@@ -47,11 +47,8 @@ export interface PhoneNumber {
     user_id: string;
 }
 
-// Add more detailed logging
 export const ANALYTICS_URL = process.env.NEXT_PUBLIC_ANALYTICS_SERVICE_URL || 'http://localhost:5002';
 export const ORCHESTRATOR_URL = process.env.NEXT_PUBLIC_ORCHESTRATOR_SERVICE_URL || 'http://localhost:5000';
-console.log('Environment:', process.env.NODE_ENV); // This will show 'development' or 'production'
-console.log('ANALYTICS_URL:', ANALYTICS_URL);
 const handleResponse = async (response: Response) => {
     if (!response.ok) {
         const errorData = await response.json().catch(() => null);
@@ -73,14 +70,12 @@ async function getCurrentUserId(): Promise<string> {
 
 export async function createAIAgent(formData: FormData, userId: string): Promise<AIAgent> {
     try {
-        // Clone the FormData and append the user_id
         const formDataWithUser = new FormData();
         for (const [key, value] of formData.entries()) {
-            console.log(`${key}:`, value instanceof File ? `File: ${value.name}` : value);
             formDataWithUser.append(key, value);
         }
         formDataWithUser.append('user_id', userId);
-        console.log('Form data with user:', userId);
+
         const response = await fetch(`${ANALYTICS_URL}/api/ai-agents`, {
             method: 'POST',
             body: formDataWithUser,
@@ -95,7 +90,6 @@ export async function createAIAgent(formData: FormData, userId: string): Promise
         }
         return response.json();
     } catch (error) {
-        console.error('Error creating AI agent:', error);
         throw error;
     }
 }
@@ -131,36 +125,24 @@ export async function getAIAgent(agentId: string): Promise<AIAgent> {
 }
 
 export async function updateAIAgent(agentId: string, formData: FormData) {
-  try {
-    // Log the form data being sent
-    console.log('Updating AI Agent - Form Data:');
-    for (const [key, value] of formData.entries()) {
-      console.log(`${key}:`, value instanceof File ? `File: ${value.name}` : value);
+    try {
+        const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`, {
+            method: 'PUT',
+            body: formData,
+            headers: {
+                'Accept': 'application/json',
+            }
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.detail || 'Failed to update agent');
+        }
+
+        return response.json();
+    } catch (error) {
+        throw error;
     }
-
-    // Add headers to specify content type
-    const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`, {
-      method: 'PUT',
-      body: formData,
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
-
-    // Log the response status and data
-    console.log('Update AI Agent Response Status:', response.status);
-    const data = await response.json();
-    console.log('Update AI Agent Response Data:', data);
-
-    if (!response.ok) {
-      throw new Error(JSON.stringify(data.detail || data));
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Error in updateAIAgent:', error);
-    throw error;
-  }
 }
 
 export async function deleteAIAgent(agentId: string, userId: string) {
@@ -372,116 +354,66 @@ export async function getAgentFunctions(agentId: string, userId: string) {
 }
 
 export async function removeAgentFunction(agentId: string, functionId: number, userId: string) {
-  try {
-    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions/${functionId}?user_id=${userId}`;
-    console.log('Calling removeAgentFunction API:', {
-      url,
-      method: 'DELETE',
-      agentId,
-      functionId,
-      userId
-    });
+    try {
+        const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions/${functionId}?user_id=${userId}`;
+        const response = await fetch(url, {
+            method: 'DELETE',
+            headers: {
+                'Accept': 'application/json',
+            }
+        });
 
-    const response = await fetch(url, {
-      method: 'DELETE',
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.detail || `Error: ${response.status}`);
+        }
 
-    console.log('Remove function API response:', {
-      status: response.status,
-      ok: response.ok,
-      statusText: response.statusText
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      console.error('Remove function API error:', errorData);
-      throw new Error(errorData?.detail || `Error: ${response.status}`);
+        return response.json();
+    } catch (error) {
+        throw error;
     }
-
-    const data = await response.json();
-    console.log('Remove function API success:', data);
-    return data;
-  } catch (error) {
-    console.error('Error in removeAgentFunction:', error);
-    throw error;
-  }
 }
 
 export async function createAgentFunction(agentId: string, functionData: any, userId: string) {
-  try {
-    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions?user_id=${userId}`;
-    console.log('Creating agent function with data:', {
-      url,
-      agentId,
-      userId,
-      functionData: JSON.stringify(functionData, null, 2)
-    });
+    try {
+        const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions?user_id=${userId}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(functionData),
+        });
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(functionData),
-    });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`Error: ${response.status} - ${JSON.stringify(errorData)}`);
+        }
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Function creation failed:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorData
-      });
-      throw new Error(`Error: ${response.status} - ${JSON.stringify(errorData)}`);
+        return response.json();
+    } catch (error) {
+        throw error;
     }
-
-    const data = await response.json();
-    console.log('Function created successfully:', data);
-    return data;
-  } catch (error) {
-    console.error('Error in createAgentFunction:', error);
-    throw error;
-  }
 }
 
 export async function updateAgentFunction(agentId: string, functionId: number, isActive: boolean, userId: string) {
-  try {
-    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions/${functionId}?user_id=${userId}`;
-    console.log('Updating agent function with:', { 
-      url,
-      agentId, 
-      functionId, 
-      isActive,
-      userId,
-      requestBody: JSON.stringify({ is_active: isActive })
-    });
-    
-    const response = await fetch(url, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ is_active: isActive }),
-    });
+    try {
+        const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions/${functionId}?user_id=${userId}`;
+        const response = await fetch(url, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ is_active: isActive }),
+        });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      console.error('Update agent function failed:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorData
-      });
-      throw new Error(errorData?.detail || `Error: ${response.status}`);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.detail || `Error: ${response.status}`);
+        }
+
+        return response.json();
+    } catch (error) {
+        throw error;
     }
-
-    const data = await response.json();
-    console.log('Update agent function succeeded:', data);
-    return data;
-  } catch (error) {
-    console.error('Error updating agent function:', error);
-    throw error;
-  }
 }

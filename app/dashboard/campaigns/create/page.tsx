@@ -37,19 +37,15 @@ export default function CreateCampaignPage() {
   });
 
   const loadPhoneNumbers = useCallback(async () => {
-    console.log('loadPhoneNumbers called');
     try {
       setIsLoadingPhones(true);
       setPhoneError(null);
       if (!session?.user?.id) {
         throw new Error('User ID not found');
       }
-      console.log('Fetching phone numbers...');
       const numbers = await getPhoneNumbers(session.user.id);
-      console.log('Received phone numbers:', numbers);
       setPhoneNumbers(numbers.filter(n => n.status === 'active'));
     } catch (err) {
-      console.error('Detailed error:', err);
       setPhoneError('Erreur lors du chargement des numéros');
     } finally {
       setIsLoadingPhones(false);
@@ -57,7 +53,6 @@ export default function CreateCampaignPage() {
   }, [session]);
 
   useEffect(() => {
-    console.log('useEffect triggered');
     if (session) {
       loadPhoneNumbers();
     }
@@ -133,14 +128,11 @@ export default function CreateCampaignPage() {
         apiFormData.append('scheduled_date', selectedDate);
       }
 
-      console.log('Creating campaign with status:', status);
       await createCampaign(apiFormData);
-
       router.replace('/dashboard/campaigns');
-      setIsSubmitting(false);
     } catch (error) {
-      console.error('Error creating campaign:', error);
       toast.error(error instanceof Error ? error.message : 'Erreur lors de la création de la campagne');
+    } finally {
       setIsSubmitting(false);
     }
   };

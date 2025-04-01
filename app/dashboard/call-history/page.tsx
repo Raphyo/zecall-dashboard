@@ -112,7 +112,7 @@ function CallHistoryContent() {
         }
       }
     } catch (error) {
-      console.error('Error loading calls:', error);
+      console.error('Error loading call data - please check server logs');
     } finally {
       if (!isRefresh) {
         setIsLoading(false);
@@ -180,7 +180,7 @@ function CallHistoryContent() {
         setIsPlaying(true);
         setPlayingId(id);
       }).catch(error => {
-        console.error('Error playing audio:', error);
+        console.error('Error playing audio - please check server logs');
         setIsPlaying(false);
       });
     }
@@ -309,7 +309,7 @@ function CallHistoryContent() {
         type: 'success'
       });
     } catch (err) {
-      console.error('Error deleting calls:', err);
+      console.error('Error deleting calls - please check server logs');
       setToast({
         message: 'Erreur lors de la suppression des appels',
         type: 'error'
