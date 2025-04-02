@@ -1,6 +1,7 @@
 import { auth } from '@/auth';
 import { headers } from 'next/headers';
 import { Call } from '../ui/calls/types';
+import { builtInVariables, Variable } from './constants';
 
 type CampaignStatus = 'en-cours' | 'planifiée' | 'terminée' | 'brouillon';
 
@@ -16,10 +17,12 @@ export interface AIAgent {
     silence_detection: boolean;
     silence_timeout: number;
     max_retries: number;
+    max_call_duration: number;
     knowledge_base_path?: string;
     knowledge_base_type?: string;
     created_at: string;
     user_id: string;
+    variables?: Variable[];
 }
 
 export interface Campaign {
@@ -107,7 +110,32 @@ export async function getAIAgents(userId: string) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        return await response.json();
+        const data = await response.json();
+        
+        // Transform dynamic_variables into variables for each agent
+        return data.map((agent: any) => {
+            // Start with built-in variables
+            const variables = [...builtInVariables];
+            
+            // Add dynamic variables if they exist
+            if (agent.dynamic_variables) {
+                variables.push(...agent.dynamic_variables.map((v: any) => ({
+                    name: v.name,
+                    // Convert type to proper case (STRING -> String, etc)
+                    type: v.type.replace('VariableDataType.', '').charAt(0) + 
+                         v.type.replace('VariableDataType.', '').slice(1).toLowerCase() as 'String' | 'Boolean' | 'Datetime' | 'Number',
+                    // Remove VariableSource. prefix if present
+                    source: v.source.replace('VariableSource.', '') === 'CSV' ? 'CSV input' : v.source.replace('VariableSource.', '') as 'built-in' | 'CSV input' | 'custom',
+                    isBuiltIn: v.is_built_in || false
+                })));
+                delete agent.dynamic_variables;
+            }
+            
+            return {
+                ...agent,
+                variables
+            };
+        });
     } catch (error) {
         console.error('Error fetching AI agents:', error);
         throw error;
@@ -117,7 +145,29 @@ export async function getAIAgents(userId: string) {
 export async function getAIAgent(agentId: string): Promise<AIAgent> {
     try {
         const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`);
-        return handleResponse(response);
+        const data = await handleResponse(response);
+        
+        // Start with built-in variables
+        const variables = [...builtInVariables];
+        
+        // Add dynamic variables if they exist
+        if (data.dynamic_variables) {
+            variables.push(...data.dynamic_variables.map((v: any) => ({
+                name: v.name,
+                // Convert type to proper case (STRING -> String, etc)
+                type: v.type.replace('VariableDataType.', '').charAt(0) + 
+                     v.type.replace('VariableDataType.', '').slice(1).toLowerCase() as 'String' | 'Boolean' | 'Datetime' | 'Number',
+                // Remove VariableSource. prefix if present
+                source: v.source.replace('VariableSource.', '') === 'CSV' ? 'CSV input' : v.source.replace('VariableSource.', '') as 'built-in' | 'CSV input' | 'custom',
+                isBuiltIn: v.is_built_in || false
+            })));
+            delete data.dynamic_variables;
+        }
+        
+        return {
+            ...data,
+            variables
+        };
     } catch (error) {
         console.error('Error fetching AI agent:', error);
         throw error;

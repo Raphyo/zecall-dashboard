@@ -101,9 +101,15 @@ export default function PhoneNumbersPage() {
             throw new Error(`Failed to update phone number ${phoneNumberId}`);
           }
 
+          // Find the phone number object to get the actual number
+          const phoneNumberObj = phoneNumbers.find(pn => pn.id === phoneNumberId);
+          if (!phoneNumberObj) {
+            throw new Error(`Phone number with ID ${phoneNumberId} not found`);
+          }
+
           // Call the webhook after successful phone number update
           const webhookResponse = await fetch(
-            `${ORCHESTRATOR_URL}/webhook/config-update?phone_number_id=${encodeURIComponent(phoneNumberId)}`,
+            `${ORCHESTRATOR_URL}/webhook/config-update?phone_number=${encodeURIComponent(phoneNumberObj.number)}`,
             {
               method: 'POST',
               headers: {

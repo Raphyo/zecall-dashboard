@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createAIAgent, createAgentFunction, updateAgentFunction, removeAgentFunction, getAgentFunctions, ORCHESTRATOR_URL, updateAIAgent, getAIAgents } from '@/app/lib/api';
 import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
+import { builtInVariables, Variable } from '@/app/lib/constants';
 
 // Import audio files
 const metroAudio = '/api/audio?file=backgrounds%2FAlmost-Empty-Metro-Station-in-Paris.mp3';
@@ -67,7 +68,9 @@ interface AIAgent {
   silence_detection: boolean;
   silence_timeout: number;
   max_retries: number;
+  max_call_duration: number;
   knowledge_base_path?: string;
+  variables?: Variable[];
 }
 
 export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; initialData?: AIAgent }) {
@@ -87,7 +90,9 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     aiStartsConversation: initialData?.ai_starts_conversation || false,
     silenceDetection: initialData?.silence_detection || false,
     silenceTimeout: initialData?.silence_timeout || 5,
-    maxRetries: initialData?.max_retries || 3
+    maxRetries: initialData?.max_retries || 3,
+    maxCallDuration: initialData?.max_call_duration || 30,
+    variables: initialData?.variables || [...builtInVariables]
   });
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
@@ -102,6 +107,10 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   const [selectedFunctionType, setSelectedFunctionType] = useState<'end_call' | 'transfer' | 'custom' | null>(null);
   const [functionConfig, setFunctionConfig] = useState<EndCallFunction | TransferFunction | CustomFunction | null>(null);
   const [editingFunction, setEditingFunction] = useState<{ index: number; function: AgentFunction } | null>(null);
+  const [showVariableModal, setShowVariableModal] = useState(false);
+  const [editingVariable, setEditingVariable] = useState<{ index: number; variable: Variable } | null>(null);
+  const [showTransferError, setShowTransferError] = useState(false);
+  const [showEndCallDescriptionError, setShowEndCallDescriptionError] = useState(false);
 
   const ambientSounds = [
     { id: 'none', name: 'Aucun', url: null },
@@ -212,6 +221,11 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       formData.append('silence_detection', agent.silenceDetection.toString());
       formData.append('silence_timeout', agent.silenceTimeout.toString());
       formData.append('max_retries', agent.maxRetries.toString());
+      formData.append('max_call_duration', agent.maxCallDuration.toString());
+      
+      // Filter out built-in variables and convert to dynamic_variables
+      const dynamicVariables = agent.variables.filter(v => !v.isBuiltIn);
+      formData.append('dynamic_variables', JSON.stringify(dynamicVariables));
 
       if (!session?.user?.id) {
         throw new Error('User ID not found');
@@ -267,9 +281,15 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
           try {
             if (func.id) {
-              // Update existing function - only pass the active state
-              const functionId = typeof func.id === 'string' ? parseInt(func.id, 10) : func.id;
-              await updateAgentFunction(savedAgent.id, functionId, func.config.active, session.user.id);
+              // If it's a temporary ID (negative number), create as new function instead of updating
+              if (typeof func.id === 'number' && func.id < 0) {
+                // Create new function instead of trying to update a temporary ID
+                await createAgentFunction(savedAgent.id, functionData, session.user.id);
+              } else {
+                // Update existing function - only pass the active state
+                const functionId = typeof func.id === 'string' ? parseInt(func.id, 10) : func.id;
+                await updateAgentFunction(savedAgent.id, functionId, func.config.active, session.user.id);
+              }
             } else {
               // Create new function
               await createAgentFunction(savedAgent.id, functionData, session.user.id);
@@ -351,6 +371,18 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   };
 
   const handleModalSave = () => {
+    // For transfer function, validate phone number and show error if needed
+    if (selectedFunctionType === 'transfer' && !(functionConfig as TransferFunction)?.transferTo) {
+      setShowTransferError(true);
+      return;
+    }
+    
+    // For end_call function, validate description and show error if needed
+    if (selectedFunctionType === 'end_call' && !(functionConfig as EndCallFunction)?.description) {
+      setShowEndCallDescriptionError(true);
+      return;
+    }
+    
     if (editingFunction) {
       // When editing, use the current function type if selectedFunctionType is not set
       const type = selectedFunctionType || editingFunction.function.type;
@@ -367,17 +399,22 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     setSelectedFunctionType(null);
     setFunctionConfig(null);
     setEditingFunction(null);
+    setShowTransferError(false);
+    setShowEndCallDescriptionError(false);
   };
 
   const handleAddFunction = (type: 'end_call' | 'transfer' | 'custom', config: any) => {
     if (editingFunction !== null) {
       // Update existing function
       setFunctions(prev => prev.map((func, idx) => 
-        idx === editingFunction.index ? { type, config } : func
+        idx === editingFunction.index ? { type, config, id: func.id } : func
       ));
     } else {
-      // Add new function
-      setFunctions(prev => [...prev, { type, config }]);
+      // Add new function with a temporary ID for new functions
+      // Use a negative ID to distinguish from server-assigned IDs (usually positive)
+      // Use a smaller negative number to avoid integer overflow issues
+      const tempId = -(Math.floor(Math.random() * 1000) + 1);
+      setFunctions(prev => [...prev, { type, config, id: tempId }]);
     }
     
     setSelectedFunctionType(null);
@@ -395,6 +432,12 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     ));
 
     try {
+      // For temporary IDs (negative numbers), don't make API calls - just update UI
+      if (typeof functionId === 'number' && functionId < 0) {
+        // Skip API call for temporary functions that haven't been saved yet
+        return;
+      }
+
       if (!agentId) {
         throw new Error('Agent ID is required to update function status');
       }
@@ -425,6 +468,12 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
   const handleDeleteFunction = async (functionId: string | number) => {
     try {
+      // If it's a temporary ID (negative number), just remove from state
+      if (typeof functionId === 'number' && functionId < 0) {
+        setFunctions(functions.filter(func => func.id !== functionId));
+        return;
+      }
+      
       if (!agentId) {
         throw new Error('Agent ID is required to delete function');
       }
@@ -547,7 +596,65 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   const handleModalKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
+      if ((selectedFunctionType === 'transfer' && !(functionConfig as TransferFunction)?.transferTo) || 
+          (selectedFunctionType === 'custom' && !(functionConfig as CustomFunction)?.name) ||
+          (selectedFunctionType === 'end_call' && !(functionConfig as EndCallFunction)?.description)) {
+        // Show appropriate error message
+        if (selectedFunctionType === 'transfer') {
+          setShowTransferError(true);
+        } else if (selectedFunctionType === 'end_call') {
+          setShowEndCallDescriptionError(true);
+        }
+        return;
+      }
       handleModalSave();
+    }
+  };
+
+  const handleFunctionInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+    }
+  };
+
+  const handleEditVariable = (index: number, variable: Variable) => {
+    if (!variable.isBuiltIn) {
+      setEditingVariable({ index, variable: { ...variable } });
+      setShowVariableModal(true);
+    }
+  };
+
+  const handleVariableModalSave = (variable: Variable) => {
+    if (editingVariable !== null && editingVariable.index >= 0) {
+      // Update existing variable
+      setAgent({
+        ...agent,
+        variables: agent.variables.map((v, i) => 
+          i === editingVariable.index ? variable : v
+        )
+      });
+    } else {
+      // Add new variable
+      setAgent({
+        ...agent,
+        variables: [...agent.variables, variable]
+      });
+    }
+    setShowVariableModal(false);
+    setEditingVariable(null);
+  };
+
+  const handleVariableModalKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (editingVariable?.variable.name) {
+        const variableToSave: Variable = {
+          ...editingVariable.variable,
+          source: 'CSV input',
+          isBuiltIn: false
+        };
+        handleVariableModalSave(variableToSave);
+      }
     }
   };
 
@@ -848,7 +955,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                     />
                     <div className="flex justify-between text-xs text-gray-500">
                       <span>5s</span>
-                      <span>{agent.silenceTimeout}s</span>
+                      <span className="font-bold text-sm text-gray-700">{agent.silenceTimeout}s</span>
                       <span>45s</span>
                     </div>
                   </div>
@@ -868,7 +975,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                     />
                     <div className="flex justify-between text-xs text-gray-500">
                       <span>1</span>
-                      <span>{agent.maxRetries}</span>
+                      <span className="font-bold text-sm text-gray-700">{agent.maxRetries}</span>
                       <span>5</span>
                     </div>
                   </div>
@@ -887,6 +994,111 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                   L'IA commence la conversation
                 </label>
               </div>
+
+              {/* Max Call Duration Control */}
+              <div className="mt-6">
+                <div className="flex flex-col space-y-2">
+                  <label htmlFor="maxCallDuration" className="text-sm text-gray-700">
+                    Durée maximale d'appel
+                  </label>
+                  <input
+                    type="range"
+                    id="maxCallDuration"
+                    min="1"
+                    max="60"
+                    value={agent.maxCallDuration}
+                    onChange={(e) => setAgent(prev => ({ ...prev, maxCallDuration: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>1 min</span>
+                    <span className="font-bold text-sm text-gray-700">{agent.maxCallDuration} min</span>
+                    <span>60 min</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Variables Section */}
+          <div className="p-6 border-t border-gray-100">
+            <div className="flex items-center mb-6">
+              <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
+              <h2 className="text-lg font-medium">Variables</h2>
+            </div>
+            <div>
+              <p className="mt-1 text-sm text-gray-500 mb-4">
+                Gérez les variables qui seront disponibles pendant l'appel. Les variables intégrées sont automatiquement disponibles.
+                Pour utiliser une variable dans le prompt, entourez-la d'accolades, par exemple : {'{from_number}'} ou {'{ma_variable}'}.
+              </p>
+
+              {/* Variables List */}
+              <div className="space-y-3 mb-4">
+                {agent.variables.map((variable, index) => (
+                  <div 
+                    key={index} 
+                    className={`flex items-center justify-between p-3 border rounded-md ${
+                      !variable.isBuiltIn ? 'cursor-pointer hover:bg-gray-50' : ''
+                    }`}
+                    onClick={() => handleEditVariable(index, variable)}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div>
+                        <p className="font-medium text-sm">{variable.name}</p>
+                        <p className="text-xs text-gray-500">Type: {variable.type}</p>
+                      </div>
+                      {variable.source && (
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          variable.source === 'built-in' 
+                            ? 'bg-blue-100 text-blue-800'
+                            : variable.source === 'CSV input'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {variable.source}
+                        </span>
+                      )}
+                    </div>
+                    {!variable.isBuiltIn && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAgent({
+                            ...agent,
+                            variables: agent.variables.filter((_, i) => i !== index)
+                          });
+                        }}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-full"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Add Variable Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  // Initialize with a default new variable
+                  setEditingVariable({
+                    index: -1,
+                    variable: {
+                      name: '',
+                      type: 'String',
+                      source: 'CSV input',
+                      isBuiltIn: false
+                    }
+                  });
+                  setShowVariableModal(true);
+                }}
+                className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                <PlusIcon className="h-5 w-5 mr-2" />
+                Ajouter une variable
+              </button>
             </div>
           </div>
 
@@ -929,7 +1141,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                         </button>
                         <button
                           type="button"
-                          onClick={() => func.id ? handleDeleteFunction(func.id) : null}
+                          onClick={() => handleDeleteFunction(func.id !== undefined ? func.id : -1)}
                           className="inline-flex items-center p-1.5 border border-red-300 rounded-full text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
                           title="Supprimer la fonction"
                         >
@@ -944,9 +1156,19 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                         <button
                           type="button"
                           onClick={() => {
-                            if (func.id) {
-                              const newActiveState = !func.config.active;
+                            // Toggle active state even for new functions (without server ID)
+                            const newActiveState = !func.config.active;
+                            
+                            if (func.id && typeof func.id === 'number' && func.id > 0) {
+                              // For existing functions with valid server ID
                               handleUpdateFunctionStatus(func.id, newActiveState);
+                            } else {
+                              // For new functions, just update the local state
+                              setFunctions(prev => 
+                                prev.map((f, i) => i === index ? 
+                                  { ...f, config: { ...f.config, active: newActiveState } } : f
+                                )
+                              );
                             }
                           }}
                           className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
@@ -1005,6 +1227,120 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
           </div>
         </div>
       </div>
+
+      {/* Variable Modal */}
+      {showVariableModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full" onKeyDown={handleVariableModalKeyDown}>
+            <div className="p-6 border-b">
+              <h3 className="text-lg font-medium">
+                {editingVariable && editingVariable.index >= 0 ? 'Modifier la variable' : 'Ajouter une variable'}
+              </h3>
+            </div>
+
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Nom <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editingVariable?.variable.name || ''}
+                    onChange={(e) => {
+                      const newName = e.target.value;
+                      if (editingVariable) {
+                        setEditingVariable({
+                          ...editingVariable,
+                          variable: { ...editingVariable.variable, name: newName }
+                        });
+                      } else {
+                        const newVariable: Variable = {
+                          name: newName,
+                          type: 'String',
+                          source: 'CSV input',
+                          isBuiltIn: false
+                        };
+                        setEditingVariable({ index: -1, variable: newVariable });
+                      }
+                    }}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                    placeholder="Nom de la variable"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Type <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={editingVariable?.variable.type || 'String'}
+                    onChange={(e) => {
+                      const variable = editingVariable?.variable || { name: '', type: 'String', source: 'CSV input', isBuiltIn: false };
+                      setEditingVariable({
+                        index: editingVariable?.index || -1,
+                        variable: { 
+                          ...variable,
+                          type: e.target.value as 'String' | 'Boolean' | 'Datetime' | 'Number'
+                        }
+                      });
+                    }}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  >
+                    <option value="String">String</option>
+                    <option value="Number">Number</option>
+                    <option value="Boolean">Boolean</option>
+                    <option value="Datetime">Datetime</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Source
+                  </label>
+                  <input
+                    type="text"
+                    value="CSV input"
+                    disabled
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm bg-gray-50 text-gray-600 cursor-not-allowed sm:text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t flex justify-end gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowVariableModal(false);
+                  setEditingVariable(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (editingVariable) {
+                    const variableToSave: Variable = {
+                      ...editingVariable.variable,
+                      source: 'CSV input',
+                      isBuiltIn: false
+                    };
+                    handleVariableModalSave(variableToSave);
+                  }
+                }}
+                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                disabled={!editingVariable?.variable.name}
+              >
+                {(editingVariable && editingVariable.index >= 0) ? 'Mettre à jour' : 'Ajouter'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Function Modal */}
       {showFunctionModal && (
@@ -1081,30 +1417,36 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       <label className="block text-sm font-medium text-gray-700">Nom</label>
                       <input
                         type="text"
-                        value={(functionConfig as EndCallFunction)?.name || ''}
-                        onChange={(e) => setFunctionConfig({ 
-                          ...functionConfig as EndCallFunction,
-                          name: e.target.value,
-                          active: true
-                        })}
-                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                        placeholder="end_call"
+                        value="end_call"
+                        readOnly
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm bg-gray-50 text-gray-600 cursor-not-allowed sm:text-sm"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Description (Optionnel)</label>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Description <span className="text-red-500">*</span>
+                      </label>
                       <input
                         type="text"
                         value={(functionConfig as EndCallFunction)?.description || ''}
-                        onChange={(e) => setFunctionConfig({ 
-                          ...functionConfig as EndCallFunction,
-                          description: e.target.value 
-                        })}
-                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        onChange={(e) => {
+                          setFunctionConfig({ 
+                            ...functionConfig as EndCallFunction,
+                            description: e.target.value 
+                          });
+                          // Clear error when user starts typing
+                          if (e.target.value) {
+                            setShowEndCallDescriptionError(false);
+                          }
+                        }}
+                        onKeyDown={handleFunctionInputKeyDown}
+                        className={`mt-1 block w-full rounded-md border ${showEndCallDescriptionError ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'} px-3 py-2 shadow-sm focus:outline-none focus:ring-blue-500 sm:text-sm`}
                         placeholder="Entrez une description"
+                        required
                       />
+                      {showEndCallDescriptionError && (
+                        <p className="mt-2 text-sm text-red-600">Veuillez saisir une description pour la fonction de fin d'appel</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1118,15 +1460,9 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       <label className="block text-sm font-medium text-gray-700">Nom</label>
                       <input
                         type="text"
-                        value={(functionConfig as TransferFunction)?.name || ''}
-                        onChange={(e) => setFunctionConfig({ 
-                          ...functionConfig as TransferFunction,
-                          name: e.target.value,
-                          active: true
-                        })}
-                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                        placeholder="transfer_call"
+                        value="transfer_call"
+                        readOnly
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm bg-gray-50 text-gray-600 cursor-not-allowed sm:text-sm"
                       />
                     </div>
                     <div>
@@ -1138,7 +1474,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           ...functionConfig as TransferFunction,
                           description: e.target.value 
                         })}
-                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                        onKeyDown={handleFunctionInputKeyDown}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Transférer l'appel vers un agent humain"
                       />
@@ -1150,15 +1486,24 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       <input
                         type="text"
                         value={(functionConfig as TransferFunction)?.transferTo || ''}
-                        onChange={(e) => setFunctionConfig({ 
-                          ...functionConfig as TransferFunction,
-                          transferTo: e.target.value 
-                        })}
-                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        onChange={(e) => {
+                          setFunctionConfig({ 
+                            ...functionConfig as TransferFunction,
+                            transferTo: e.target.value 
+                          });
+                          // Clear error when user starts typing
+                          if (e.target.value) {
+                            setShowTransferError(false);
+                          }
+                        }}
+                        onKeyDown={handleFunctionInputKeyDown}
+                        className={`mt-1 block w-full rounded-md border ${showTransferError ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'} px-3 py-2 shadow-sm focus:outline-none sm:text-sm`}
                         placeholder="+33123456789"
                         required
                       />
+                      {showTransferError && (
+                        <p className="mt-2 text-sm text-red-600">Veuillez saisir un numéro de téléphone pour le transfert</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1180,7 +1525,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           name: e.target.value,
                           active: true
                         })}
-                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                        onKeyDown={handleFunctionInputKeyDown}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Entrez le nom de la fonction"
                         required
@@ -1197,7 +1542,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           ...functionConfig as CustomFunction,
                           description: e.target.value 
                         })}
-                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                        onKeyDown={handleFunctionInputKeyDown}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Entrez une description"
                         required
@@ -1214,7 +1559,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           ...functionConfig as CustomFunction,
                           url: e.target.value 
                         })}
-                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                        onKeyDown={handleFunctionInputKeyDown}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Entrez l'URL de la fonction"
                         required
@@ -1229,7 +1574,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           ...functionConfig as CustomFunction,
                           apiTimeout: Number(e.target.value) 
                         })}
-                        onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                        onKeyDown={handleFunctionInputKeyDown}
                         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                         placeholder="Délai en millisecondes"
                       />

@@ -180,8 +180,8 @@ export default function CreateCampaignPage() {
       const text = event.target?.result as string;
       // Validate CSV structure
       const headers = text.split('\n')[0].toLowerCase();
-      if (!headers.includes('phone_number') || !headers.includes('name') || !headers.includes('email')) {
-        toast.error('Le fichier CSV doit contenir les colonnes "phone_number", "name" et "email"');
+      if (!headers.includes('phone_number')) {
+        toast.error('Le fichier CSV doit contenir une colonne "phone_number"');
         setCampaign(prev => ({ ...prev, contactsFile: null }));
         e.target.value = '';  // Reset the file input
         return;
@@ -346,7 +346,7 @@ export default function CreateCampaignPage() {
                       )}
                     </div>
                     <p className="mt-2 text-sm text-gray-500">
-                      Fichier CSV avec les colonnes "phone_number", "name" et "email"
+                      Votre fichier CSV doit contenir une colonne nommée "phone_number" qui contient les numéros de téléphone des contacts.
                     </p>
                   </div>
                 </section>

@@ -15,7 +15,8 @@ const voiceDisplayNames: { [key: string]: string } = {
   'guillaume-11labs': 'Guillaume (H)',
   'lucien-11labs': 'Lucien (H)',
   'audrey-11labs': 'Audrey (F)',
-  'jessy-11labs': 'Jessy (F)'
+  'jessy-11labs': 'Jessy (F)',
+  'clara-11labs': 'Clara (F)'
 };
 
 interface AIAgent {
