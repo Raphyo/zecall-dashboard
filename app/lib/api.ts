@@ -23,6 +23,7 @@ export interface AIAgent {
     created_at: string;
     user_id: string;
     variables?: Variable[];
+    labels?: string[];
 }
 
 export interface Campaign {

@@ -9,6 +9,7 @@ import {
   PhoneIcon,
   ClockIcon,
   LockClosedIcon,
+  Squares2X2Icon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -67,6 +68,7 @@ export default function NavLinks() {
       onClick: handleLockedClick
     },
     { name: 'Historique des appels', href: '/dashboard/call-history', icon: ClockIcon },
+    { name: 'Workflows', href: '/dashboard/workflow', icon: Squares2X2Icon },
   ];
 
   return (
