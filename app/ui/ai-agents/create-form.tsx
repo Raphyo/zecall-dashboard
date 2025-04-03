@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon, InformationCircleIcon, PlusIcon, PhoneIcon, ArrowPathRoundedSquareIcon, Squares2X2Icon, TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon, InformationCircleIcon, PlusIcon, PhoneIcon, ArrowPathRoundedSquareIcon, Squares2X2Icon, TrashIcon, PencilIcon, TagIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { createAIAgent, createAgentFunction, updateAgentFunction, removeAgentFunction, getAgentFunctions, ORCHESTRATOR_URL, updateAIAgent, getAIAgents } from '@/app/lib/api';
 import { Toast } from '../toast';
@@ -71,6 +71,7 @@ interface AIAgent {
   max_call_duration: number;
   knowledge_base_path?: string;
   variables?: Variable[];
+  labels?: string[];
 }
 
 export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; initialData?: AIAgent }) {
@@ -92,7 +93,8 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     silenceTimeout: initialData?.silence_timeout || 5,
     maxRetries: initialData?.max_retries || 3,
     maxCallDuration: initialData?.max_call_duration || 30,
-    variables: initialData?.variables || [...builtInVariables]
+    variables: initialData?.variables || [...builtInVariables],
+    labels: initialData?.labels || []
   });
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
@@ -222,6 +224,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       formData.append('silence_timeout', agent.silenceTimeout.toString());
       formData.append('max_retries', agent.maxRetries.toString());
       formData.append('max_call_duration', agent.maxCallDuration.toString());
+      formData.append('labels', JSON.stringify(agent.labels));
       
       // Filter out built-in variables and convert to dynamic_variables
       const dynamicVariables = agent.variables.filter(v => !v.isBuiltIn);
@@ -656,6 +659,22 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
         handleVariableModalSave(variableToSave);
       }
     }
+  };
+
+  const handleAddLabel = (label: string) => {
+    if (label && !agent.labels.includes(label)) {
+      setAgent(prev => ({
+        ...prev,
+        labels: [...prev.labels, label]
+      }));
+    }
+  };
+
+  const handleRemoveLabel = (label: string) => {
+    setAgent(prev => ({
+      ...prev,
+      labels: prev.labels.filter(l => l !== label)
+    }));
   };
 
   return (
@@ -1099,6 +1118,66 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                 <PlusIcon className="h-5 w-5 mr-2" />
                 Ajouter une variable
               </button>
+            </div>
+          </div>
+
+          {/* Labels Section */}
+          <div className="p-6 border-t border-gray-100">
+            <div className="flex items-center mb-6">
+              <TagIcon className="h-6 w-6 text-gray-600 mr-2" />
+              <h2 className="text-lg font-medium">Labels</h2>
+            </div>
+            <div>
+              <p className="mt-1 text-sm text-gray-500 mb-4">
+                Ajoutez des labels pour catégoriser les transcriptions de conversations.
+              </p>
+              
+              {/* Label Input */}
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="text"
+                  placeholder="Ajouter un label..."
+                  className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const input = e.target as HTMLInputElement;
+                      handleAddLabel(input.value.trim());
+                      input.value = '';
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const input = document.querySelector('input[placeholder="Ajouter un label..."]') as HTMLInputElement;
+                    handleAddLabel(input.value.trim());
+                    input.value = '';
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                >
+                  Ajouter
+                </button>
+              </div>
+
+              {/* Labels Display */}
+              <div className="flex flex-wrap gap-2">
+                {agent.labels.map((label, index) => (
+                  <span
+                    key={index}
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-700"
+                  >
+                    {label}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveLabel(label)}
+                      className="p-0.5 hover:bg-blue-200 rounded-full"
+                    >
+                      <XMarkIcon className="h-4 w-4" />
+                    </button>
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
