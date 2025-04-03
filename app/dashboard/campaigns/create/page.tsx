@@ -573,16 +573,9 @@ export default function CreateCampaignPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          const tomorrow = new Date();
-                          tomorrow.setDate(tomorrow.getDate() + 1);
-                          setSelectedDate(tomorrow.toISOString().split('T')[0]);
-                        }}
-                        className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
-                          selectedDate 
-                            ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                        }`}
+                        disabled={true}
+                        title="Cette fonctionnalité n'est pas encore disponible"
+                        className={`flex-1 px-4 py-2 rounded-md text-sm font-medium cursor-not-allowed opacity-50 bg-white text-gray-700 border border-gray-300`}
                       >
                         Planifier pour plus tard
                       </button>
