@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DocumentIcon, PhoneIcon } from '@heroicons/react/24/outline';
+import { DocumentIcon, PhoneIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { getPhoneNumbers, createCampaign, type PhoneNumber } from '@/app/lib/api';
 import { useSession } from 'next-auth/react';
@@ -35,6 +35,8 @@ export default function CreateCampaignPage() {
     retry_frequency: 5,
     max_retries: 2,
   });
+  const [showConsentModal, setShowConsentModal] = useState(false);
+  const [showRegulationModal, setShowRegulationModal] = useState(false);
 
   const loadPhoneNumbers = useCallback(async () => {
     try {
@@ -164,7 +166,13 @@ export default function CreateCampaignPage() {
     }
   };
 
+  const handleFileSelectClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowConsentModal(true);
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setShowConsentModal(false);
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -195,6 +203,135 @@ export default function CreateCampaignPage() {
 
   return (
     <>
+      {/* Regulation Modal */}
+      {showRegulationModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-center mb-4">
+                <div className="rounded-full bg-orange-100 p-3">
+                  <InformationCircleIcon className="h-6 w-6 text-orange-400" />
+                </div>
+              </div>
+              <h3 className="text-lg font-medium text-center mb-6">Réglementation sur la protection des données</h3>
+              <div className="space-y-6 text-sm text-gray-600">
+                <p className="font-medium">
+                  Votre fichier doit être 100% OPT-IN, et vous devez être en mesure de fournir la preuve du consentement explicite de vos contacts.
+                </p>
+                
+                <div>
+                  <p className="font-medium mb-2">Cette preuve doit inclure au minimum :</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>La date du consentement.</li>
+                    <li>Les données collectées.</li>
+                    <li>Les finalités pour lesquelles les données ont été collectées (ex. : offres promotionnelles, relances commerciales, enquêtes de satisfaction, etc.).</li>
+                    <li>Les canaux de communication autorisés (téléphone, SMS, email, etc.).</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <p className="font-medium mb-2">Votre fichier contient-il des données sensibles ?</p>
+                  <p className="mb-2">Si votre base de contacts contient des données sensibles, des obligations supplémentaires s'appliquent.</p>
+                  <p className="mb-2">Sont considérées comme données sensibles :</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>L'origine raciale ou ethnique</li>
+                    <li>Les opinions politiques, philosophiques ou religieuses</li>
+                    <li>L'appartenance syndicale</li>
+                    <li>La santé ou la vie sexuelle</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <p className="mb-2">Si vos fichiers contiennent l'une de ces informations, vous devez être en mesure de prouver au moins l'une des conditions suivantes en cas de contrôle :</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Votre contact a donné son consentement exprès (écrit, clair et explicite) et vous pouvez en apporter la preuve.</li>
+                    <li>Les données sont traitées à des fins médicales ou de recherche en santé, et vous justifiez d'une activité dans ce domaine.</li>
+                    <li>Les données concernent les membres d'une association, organisation philosophique, politique ou syndicale.</li>
+                    <li>Vous disposez d'une autorisation de la CNIL pour le traitement de ces données.</li>
+                  </ul>
+                </div>
+
+                <p>
+                  En cas de contrôle, nous nous réservons le droit de vous demander à tout moment la preuve du consentement des contacts de vos fichiers.
+                </p>
+
+                <p>
+                  Pour vous aider à respecter la réglementation, nous avons mis en place des ressources et guides dédiés. Accédez à nos documentations ici : <a href="https://www.app.zecall.ai/conditions-generales-dutilisation" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700">https://www.app.zecall.ai/conditions-generales-dutilisation</a>
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowRegulationModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Consent Modal */}
+      {showConsentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-center mb-4">
+                <div className="rounded-full bg-orange-100 p-3">
+                  <InformationCircleIcon className="h-6 w-6 text-orange-400" />
+                </div>
+              </div>
+              <h3 className="text-lg font-medium text-center mb-4">Important</h3>
+              <div className="space-y-4 text-sm text-gray-600">
+                <p>
+                  En utilisant notre solution pour vos campagnes d'appels, vous importez un fichier de contacts sous votre entière responsabilité.
+                </p>
+                <div>
+                  <p className="mb-2">La réglementation impose que :</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Votre fichier de contacts soit 100% opt-in.</li>
+                    <li>Vous ayez conservé la preuve du consentement explicite de vos contacts.</li>
+                  </ul>
+                </div>
+                <p>
+                  Le traitement des données personnelles et sensibles est strictement encadré. Notre plateforme étant utilisée librement pour toutes vos campagnes d'appels, nous ne pourrons être tenus responsables en cas de non-conformité.
+                </p>
+                <p 
+                  className="text-blue-600 hover:text-blue-700 cursor-pointer"
+                  onClick={() => {
+                    setShowConsentModal(false);
+                    setShowRegulationModal(true);
+                  }}
+                >
+                  En savoir plus sur la réglementation en vigueur
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-between gap-4">
+              <button
+                type="button"
+                onClick={() => setShowConsentModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConsentModal(false);
+                  document.getElementById('file-upload')?.click();
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Je suis conscient de mes obligations
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Toaster
         position="bottom-right"
         reverseOrder={false}
@@ -329,6 +466,7 @@ export default function CreateCampaignPage() {
                         />
                         <label
                           htmlFor="file-upload"
+                          onClick={handleFileSelectClick}
                           className={`cursor-pointer inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold shadow-sm
                             ${campaign.contactsFile 
                               ? 'bg-white text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50'
