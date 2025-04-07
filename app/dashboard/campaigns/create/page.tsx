@@ -206,14 +206,17 @@ export default function CreateCampaignPage() {
       {/* Regulation Modal */}
       {showRegulationModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b">
               <div className="flex justify-center mb-4">
                 <div className="rounded-full bg-orange-100 p-3">
                   <InformationCircleIcon className="h-6 w-6 text-orange-400" />
                 </div>
               </div>
-              <h3 className="text-lg font-medium text-center mb-6">Réglementation sur la protection des données</h3>
+              <h3 className="text-lg font-medium text-center">Réglementation sur la protection des données</h3>
+            </div>
+
+            <div className="p-6 overflow-y-auto">
               <div className="space-y-6 text-sm text-gray-600">
                 <p className="font-medium">
                   Votre fichier doit être 100% OPT-IN, et vous devez être en mesure de fournir la preuve du consentement explicite de vos contacts.
@@ -260,13 +263,24 @@ export default function CreateCampaignPage() {
                 </p>
               </div>
             </div>
-            <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end">
+
+            <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-between gap-4 border-t">
               <button
                 type="button"
                 onClick={() => setShowRegulationModal(false)}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
-                Fermer
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRegulationModal(false);
+                  document.getElementById('file-upload')?.click();
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Je suis conscient de mes obligations
               </button>
             </div>
           </div>

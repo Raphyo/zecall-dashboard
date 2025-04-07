@@ -427,6 +427,9 @@ function CallHistoryContent() {
               <table className="min-w-full divide-y divide-gray-200 table-fixed">
                 <thead>
                   <tr className="bg-gray-50">
+                    <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pr-0 w-24">
+                      <span className="sr-only">Actions</span>
+                    </th>
                     <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 w-20">
                       ID Appel
                     </th>
@@ -460,14 +463,46 @@ function CallHistoryContent() {
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Campagne
                     </th>
-                    <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-0 w-24">
-                      <span className="sr-only">Actions</span>
-                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {filteredCalls.map((call) => (
                     <tr key={call.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
+                        <div className="flex gap-2">
+                          {call.recording_url && (
+                            <button
+                              onClick={() => handlePlayAudio(
+                                call.recording_url,
+                                call.id,
+                                `Appel ${call.caller_number}`
+                              )}
+                              className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
+                              title="Écouter l'enregistrement"
+                            >
+                              {playingId === call.id && isPlaying ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                                  <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" />
+                                </svg>
+                              ) : (
+                                <PlayCircleIcon className="h-5 w-5" />
+                              )}
+                            </button>
+                          )}
+                          {(call.ai_transcript || call.ai_summary) && (
+                            <button
+                              onClick={() => handleViewTranscript(
+                                call.ai_transcript,
+                                call.ai_summary
+                              )}
+                              className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
+                              title="Voir la transcription"
+                            >
+                              <DocumentTextIcon className="h-5 w-5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                       <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
                         {call.id.substring(0, 7)}
                       </td>
@@ -567,41 +602,6 @@ function CallHistoryContent() {
                             {call.campaign_name}
                           </span>
                         ) : '-'}
-                      </td>
-                      <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium">
-                        <div className="flex justify-end gap-2">
-                          {call.recording_url && (
-                            <button
-                              onClick={() => handlePlayAudio(
-                                call.recording_url,
-                                call.id,
-                                `Appel ${call.caller_number}`
-                              )}
-                              className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
-                              title="Écouter l'enregistrement"
-                            >
-                              {playingId === call.id && isPlaying ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                                  <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" />
-                                </svg>
-                              ) : (
-                                <PlayCircleIcon className="h-5 w-5" />
-                              )}
-                            </button>
-                          )}
-                          {(call.ai_transcript || call.ai_summary) && (
-                            <button
-                              onClick={() => handleViewTranscript(
-                                call.ai_transcript,
-                                call.ai_summary
-                              )}
-                              className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
-                              title="Voir la transcription"
-                            >
-                              <DocumentTextIcon className="h-5 w-5" />
-                            </button>
-                          )}
-                        </div>
                       </td>
                     </tr>
                   ))}

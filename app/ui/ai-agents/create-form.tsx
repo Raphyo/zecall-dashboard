@@ -39,7 +39,7 @@ interface CustomFunction extends BaseConfig {
   apiTimeout?: number;
   parameters?: string;
   speakDuringExecution: boolean;
-  speakAfterExecution: boolean;
+  executionMessage?: string;
 }
 
 interface TransferFunction extends BaseConfig {
@@ -274,7 +274,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               url: customConfig.url,
               apiTimeout: customConfig.apiTimeout || 120000,
               speakDuringExecution: customConfig.speakDuringExecution,
-              speakAfterExecution: customConfig.speakAfterExecution
+              executionMessage: customConfig.executionMessage || ''
             };
           } else if (func.type === 'transfer') {
             functionData.parameters = JSON.stringify({
@@ -289,9 +289,11 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                 // Create new function instead of trying to update a temporary ID
                 await createAgentFunction(savedAgent.id, functionData, session.user.id);
               } else {
-                // Update existing function - only pass the active state
+                // Update existing function - first update active state, then update other properties
                 const functionId = typeof func.id === 'string' ? parseInt(func.id, 10) : func.id;
                 await updateAgentFunction(savedAgent.id, functionId, func.config.active, session.user.id);
+                // Use createAgentFunction to update other properties (it handles both creation and updates)
+                await createAgentFunction(savedAgent.id, functionData, session.user.id);
               }
             } else {
               // Create new function
@@ -548,7 +550,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                 apiTimeout: func.external_config?.apiTimeout || 120000,
                 parameters: typeof func.parameters === 'string' ? func.parameters : JSON.stringify(func.parameters),
                 speakDuringExecution: func.external_config?.speakDuringExecution || false,
-                speakAfterExecution: func.external_config?.speakAfterExecution || true,
+                executionMessage: func.external_config?.executionMessage || '',
               };
             } else if (type === 'transfer') {
               config = {
@@ -1475,7 +1477,6 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                           name: '',
                           url: '',
                           speakDuringExecution: false,
-                          speakAfterExecution: true,
                           active: true
                         });
                       }}
@@ -1711,23 +1712,26 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       <p className="text-xs text-gray-500 ml-6">
                         Si la fonction prend plus de 2 secondes, l'agent peut dire quelque chose comme : "Je vérifie cela pour vous."
                       </p>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={(functionConfig as CustomFunction)?.speakAfterExecution}
-                          onChange={(e) => setFunctionConfig({ 
-                            ...functionConfig as CustomFunction,
-                            speakAfterExecution: e.target.checked 
-                          })}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">Parler après l'exécution</span>
-                      </label>
-                      <p className="text-xs text-gray-500 ml-6">
-                        Désélectionnez si vous souhaitez exécuter la fonction silencieusement, par exemple pour télécharger le résultat de l'appel sur le serveur.
-                      </p>
+                      
+                      {(functionConfig as CustomFunction)?.speakDuringExecution && (
+                        <div className="mt-3 ml-6">
+                          <label className="block text-sm text-gray-700">Message pendant l'exécution</label>
+                          <input
+                            type="text"
+                            value={(functionConfig as CustomFunction)?.executionMessage || ''}
+                            onChange={(e) => setFunctionConfig({ 
+                              ...functionConfig as CustomFunction,
+                              executionMessage: e.target.value 
+                            })}
+                            onKeyDown={handleFunctionInputKeyDown}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            placeholder="Je vérifie cela pour vous..."
+                          />
+                          <p className="mt-1 text-xs text-gray-500">
+                            Message personnalisé que l'agent dira pendant l'exécution de la fonction
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
