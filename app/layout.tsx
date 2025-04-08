@@ -3,6 +3,7 @@ import '@/app/ui/global.css';
 import { inter } from '@/app/ui/fonts';
 import { Providers } from './providers';
 import { Analytics } from "@vercel/analytics/react"
+import { Toaster } from 'react-hot-toast';
 
 export const metadata = {
   title: 'zecall.ai',
@@ -27,6 +28,7 @@ export default async function RootLayout({
         <Providers>
           {children}
           <Analytics />
+          <Toaster position="top-center" />
         </Providers>
       </body>
     </html>

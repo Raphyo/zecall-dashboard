@@ -42,7 +42,14 @@ export default function SideNav() {
     }
   };
 
-  const handleBuyCredits = async () => {
+  const handleBuyCredits = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    toast.error('Vous n\'avez pas accès à ce service', {
+      duration: 3000,
+      position: 'top-center',
+    });
+    // Commented out payment logic for later use
+    /*
     const amount = Number(rechargeAmount);
     if (amount < 15) {
       toast.error('Le montant minimum est de 15€');
@@ -73,6 +80,7 @@ export default function SideNav() {
     } finally {
       setIsLoadingCheckout(false);
     }
+    */
   };
 
   return (
@@ -116,6 +124,15 @@ export default function SideNav() {
                 </div>
                 <button
                   onClick={handleBuyCredits}
+                  className="group relative w-full py-2 px-4 bg-gradient-to-r from-gray-500 via-gray-600 to-gray-700 text-white font-medium rounded-lg shadow-sm transition-opacity duration-200 cursor-not-allowed opacity-50"
+                >
+                  <span>Payer</span>
+                  <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-black text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                    Vous n'avez pas accès à ce service
+                    <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-black"></div>
+                  </div>
+                </button>
+                {/* Commented out loading state for later use
                   disabled={isLoadingCheckout || !rechargeAmount || Number(rechargeAmount) < 15}
                   className="w-full py-2 px-4 bg-gradient-to-r from-blue-600 via-blue-500 to-purple-600 text-white font-medium rounded-lg shadow-sm transition-opacity duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
                 >
@@ -130,7 +147,7 @@ export default function SideNav() {
                   ) : (
                     'Payer'
                   )}
-                </button>
+                */}
               </div>
             </div>
           </div>
