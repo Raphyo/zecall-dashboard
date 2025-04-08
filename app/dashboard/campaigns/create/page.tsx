@@ -83,8 +83,8 @@ export default function CreateCampaignPage() {
       setIsSubmitting(true);
 
       // Check credits before proceeding
-      const estimatedDurationMinutes = contactsCount * 2; // 2 minutes per contact
-      const creditsResponse = await fetch(`/api/credits/check?duration_minutes=${estimatedDurationMinutes}`);
+      const estimatedDurationSeconds = contactsCount * 120; // 2 minutes (120 seconds) per contact
+      const creditsResponse = await fetch(`/api/credits/check?duration_seconds=${estimatedDurationSeconds}`);
       const creditsData = await creditsResponse.json();
 
       if (!creditsResponse.ok) {

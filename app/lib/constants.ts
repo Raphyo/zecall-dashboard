@@ -1,5 +1,6 @@
-// Call pricing in euros per minute
-export const CALL_COST_PER_MINUTE = 0.20;  
+// Call pricing in euros
+export const CALL_COST_PER_MINUTE = 0.20;
+export const CALL_COST_PER_SECOND = CALL_COST_PER_MINUTE / 60; // 0.00333... euros per second
 
 export interface Variable {
     name: string;
