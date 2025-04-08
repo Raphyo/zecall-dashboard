@@ -111,6 +111,40 @@ export default function CreateCampaignPage() {
         return;
       }
 
+      // Check business hours
+      const now = new Date();
+      const scheduleDate = selectedDate ? new Date(selectedDate) : now;
+
+      // Convert to French time (UTC+1)
+      const frenchTime = new Date(scheduleDate.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+      const hours = frenchTime.getHours();
+      const minutes = frenchTime.getMinutes();
+      const day = frenchTime.getDay();
+
+      // Check if it's a weekend (0 is Sunday, 6 is Saturday)
+      if (day === 0 || day === 6) {
+        toast.error(
+          <div className="text-sm">
+            <p className="font-medium">Horaires non autorisés</p>
+            <p>Les campagnes ne peuvent être lancées que pendant les jours ouvrables (lundi au vendredi).</p>
+          </div>,
+          { duration: 5000 }
+        );
+        return;
+      }
+
+      // Check if it's within business hours (10:00-13:00 and 14:00-20:00 French time)
+      if (hours < 10 || hours === 13 || hours >= 20) {
+        toast.error(
+          <div className="text-sm">
+            <p className="font-medium">Horaires non autorisés</p>
+            <p>Les campagnes ne peuvent être lancées qu'entre 10h et 20h (hors 13h-14h).</p>
+          </div>,
+          { duration: 5000 }
+        );
+        return;
+      }
+
       const apiFormData = new FormData();
       apiFormData.append('name', campaign.name);
       apiFormData.append('contacts_file', campaign.contactsFile as File);
@@ -129,73 +163,18 @@ export default function CreateCampaignPage() {
       if (selectedDate) {
         apiFormData.append('scheduled_date', selectedDate);
       }
-    // Check business hours
-    const now = new Date();
-    const scheduleDate = selectedDate ? new Date(selectedDate) : now;
 
-    // Convert to French time (UTC+1)
-    const frenchTime = new Date(scheduleDate.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
-    const hours = frenchTime.getHours();
-    const minutes = frenchTime.getMinutes();
-    const day = frenchTime.getDay();
+      // Show success toast and redirect immediately
+      toast.success('Campagne en cours de création...', {
+        duration: 3000,
+        position: 'bottom-right',
+      });
 
-    // Check if it's a weekend (0 is Sunday, 6 is Saturday)
-    if (day === 0 || day === 6) {
-      toast.error(
-        <div className="text-sm">
-          <p className="font-medium">Horaires non autorisés</p>
-          <p>Les campagnes ne peuvent être lancées que pendant les jours ouvrables (lundi au vendredi).</p>
-        </div>,
-        { duration: 5000 }
-      );
-      return;
-    }
+      // Add a small delay before navigation to ensure toast is visible
+      setTimeout(() => {
+        router.push('/dashboard/campaigns');
+      }, 500);
 
-    // Check if it's within business hours (10:00-13:00 and 14:00-20:00 French time)
-    if (hours < 10 || hours === 13 || hours >= 20) {
-      toast.error(
-        <div className="text-sm">
-          <p className="font-medium">Horaires non autorisés</p>
-          <p>Les campagnes ne peuvent être lancées qu'entre 10h et 20h (hors 13h-14h).</p>
-        </div>,
-        { duration: 5000 }
-      );
-      return;
-    }
-
-    setIsSubmitting(true);
-    const apiFormData = new FormData();
-    apiFormData.append('name', campaign.name);
-    apiFormData.append('contacts_file', campaign.contactsFile as File);
-    apiFormData.append('phone_number_id', campaign.phoneNumberId);
-    apiFormData.append('max_retries', campaign.max_retries.toString());
-    // Only append retry_frequency if max_retries > 1
-    if (campaign.max_retries > 1) {
-      apiFormData.append('retry_frequency', campaign.retry_frequency.toString());
-    }
-    // Set status based on submission type
-    const status = selectedDate ? 'planifiée' : 'en-cours';
-    apiFormData.append('status', status);
-    const userId = getUserIdFromEmail(session?.user?.email);
-    if (userId) {
-      apiFormData.append('user_id', userId);
-    }
-    if (selectedDate) {
-      apiFormData.append('scheduled_date', selectedDate);
-    }
-
-    // Show success toast and redirect immediately
-    toast.success('Campagne en cours de création...', {
-      duration: 3000,
-      position: 'bottom-right',
-    });
-
-    // Add a small delay before navigation to ensure toast is visible
-    setTimeout(() => {
-      router.push('/dashboard/campaigns');
-    }, 500);
-
-    try {
       console.log('Creating campaign with status:', status);
       await createCampaign(apiFormData);
     } catch (error) {
