@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon, InformationCircleIcon, PlusIcon, PhoneIcon, ArrowPathRoundedSquareIcon, Squares2X2Icon, TrashIcon, PencilIcon, TagIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon, InformationCircleIcon, PlusIcon, PhoneIcon, ArrowPathRoundedSquareIcon, Squares2X2Icon, TrashIcon, PencilIcon, TagIcon, XMarkIcon, EnvelopeIcon, BellIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { createAIAgent, createAgentFunction, updateAgentFunction, removeAgentFunction, getAgentFunctions, ORCHESTRATOR_URL, updateAIAgent, getAIAgents } from '@/app/lib/api';
 import { Toast } from '../toast';
@@ -50,6 +50,41 @@ interface EndCallFunction extends BaseConfig {
   // No additional properties needed
 }
 
+// Add new interfaces for post-call actions
+interface PostCallAction extends BaseConfig {
+  type: 'sms' | 'email' | 'api' | 'notification';
+  config: SMSConfig | EmailConfig | APIConfig | NotificationConfig;
+}
+
+interface SMSConfig {
+  phoneNumber: string;
+  message: string;
+  variables?: string[];
+}
+
+interface EmailConfig {
+  to: string;
+  subject: string;
+  body: string;
+  variables?: string[];
+}
+
+interface APIConfig {
+  url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  headers?: Record<string, string>;
+  body?: string;
+  variables?: string[];
+}
+
+interface NotificationConfig {
+  type: 'sms' | 'email' | 'both';
+  phoneNumber?: string;
+  email?: string;
+  message: string;
+  variables?: string[];
+}
+
 interface AgentFunction {
   id?: string | number;
   type: 'end_call' | 'transfer' | 'custom';
@@ -72,6 +107,7 @@ interface AIAgent {
   knowledge_base_path?: string;
   variables?: Variable[];
   labels?: string[];
+  post_call_actions?: PostCallAction[];
 }
 
 export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; initialData?: AIAgent }) {
@@ -94,7 +130,8 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     maxRetries: initialData?.max_retries || 3,
     maxCallDuration: initialData?.max_call_duration || 30,
     variables: initialData?.variables || [...builtInVariables],
-    labels: initialData?.labels || []
+    labels: initialData?.labels || [],
+    postCallActions: initialData?.post_call_actions || []
   });
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
@@ -113,6 +150,10 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   const [editingVariable, setEditingVariable] = useState<{ index: number; variable: Variable } | null>(null);
   const [showTransferError, setShowTransferError] = useState(false);
   const [showEndCallDescriptionError, setShowEndCallDescriptionError] = useState(false);
+  const [showPostCallActionModal, setShowPostCallActionModal] = useState(false);
+  const [selectedPostCallActionType, setSelectedPostCallActionType] = useState<'sms' | 'email' | 'api' | 'notification' | null>(null);
+  const [postCallActionConfig, setPostCallActionConfig] = useState<SMSConfig | EmailConfig | APIConfig | NotificationConfig | null>(null);
+  const [editingPostCallAction, setEditingPostCallAction] = useState<{ index: number; action: PostCallAction } | null>(null);
 
   const ambientSounds = [
     { id: 'none', name: 'Aucun', url: null },
@@ -676,6 +717,29 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     setAgent(prev => ({
       ...prev,
       labels: prev.labels.filter(l => l !== label)
+    }));
+  };
+
+  const handleEditPostCallAction = (index: number, action: PostCallAction) => {
+    setEditingPostCallAction({ index, action });
+    setSelectedPostCallActionType(action.type);
+    setPostCallActionConfig(action.config);
+    setShowPostCallActionModal(true);
+  };
+
+  const handleDeletePostCallAction = (index: number) => {
+    setAgent(prev => ({
+      ...prev,
+      postCallActions: prev.postCallActions.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleTogglePostCallAction = (index: number) => {
+    setAgent(prev => ({
+      ...prev,
+      postCallActions: prev.postCallActions.map((action, i) => 
+        i === index ? { ...action, active: !action.active } : action
+      )
     }));
   };
 
@@ -1285,6 +1349,100 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               </button>
             </div>
           </div>
+
+          {/* Post-Call Actions Section */}
+          <div className="p-6 border-t border-gray-100">
+            <div className="flex items-center mb-6">
+              <ArrowPathRoundedSquareIcon className="h-6 w-6 text-gray-600 mr-2" />
+              <h2 className="text-lg font-medium">Actions post-appel</h2>
+            </div>
+            <div>
+              <p className="mt-1 text-sm text-gray-500 mb-4">
+                Configurez les actions à exécuter automatiquement après chaque appel (envoi de SMS, email, notifications, etc.).
+              </p>
+              
+              {/* Post-Call Actions List */}
+              <div className="space-y-3 mb-4">
+                {agent.postCallActions.map((action, index) => (
+                  <div key={index} className="flex flex-col p-3 border rounded-md">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center">
+                        {action.type === 'sms' && <PhoneIcon className="h-5 w-5 text-gray-500 mr-2" />}
+                        {action.type === 'email' && <EnvelopeIcon className="h-5 w-5 text-gray-500 mr-2" />}
+                        {action.type === 'api' && <CommandLineIcon className="h-5 w-5 text-gray-500 mr-2" />}
+                        {action.type === 'notification' && <BellIcon className="h-5 w-5 text-gray-500 mr-2" />}
+                        <div>
+                          <p className="font-medium text-sm">{action.name}</p>
+                          {action.description && (
+                            <p className="text-sm text-gray-500">{action.description}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditPostCallAction(index, action)}
+                          className="inline-flex items-center p-1.5 border border-gray-300 rounded-full text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                          title="Modifier l'action"
+                        >
+                          <span className="sr-only">Modifier l'action</span>
+                          <PencilIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePostCallAction(index)}
+                          className="inline-flex items-center p-1.5 border border-red-300 rounded-full text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                          title="Supprimer l'action"
+                        >
+                          <span className="sr-only">Supprimer l'action</span>
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center mt-2 pt-2 border-t border-gray-100">
+                      <div className="flex items-center flex-grow">
+                        <span className="text-sm text-gray-500 mr-3">État :</span>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePostCallAction(index)}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                            action.active ? 'bg-blue-600' : 'bg-gray-200'
+                          }`}
+                        >
+                          <span className="sr-only">
+                            {action.active ? 'Désactiver l\'action' : 'Activer l\'action'}
+                          </span>
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              action.active ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                        <span className="text-sm text-gray-500 ml-3">
+                          {action.active ? 'Activée' : 'Désactivée'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add Post-Call Action Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPostCallActionModal(true);
+                  setSelectedPostCallActionType(null);
+                  setPostCallActionConfig(null);
+                  setEditingPostCallAction(null);
+                }}
+                className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                <PlusIcon className="h-5 w-5 mr-2" />
+                Ajouter une action post-appel
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="sticky bottom-0 bg-white py-4 px-6 border-t border-gray-200">
@@ -1761,6 +1919,480 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                   className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
                 >
                   {editingFunction ? 'Mettre à jour' : 'Enregistrer'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post-Call Action Modal */}
+      {showPostCallActionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b">
+              <h3 className="text-lg font-medium">
+                {editingPostCallAction ? 'Modifier l\'action post-appel' : 'Ajouter une action post-appel'}
+              </h3>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {/* Action Type Selection */}
+              {!selectedPostCallActionType && !editingPostCallAction && (
+                <div className="p-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPostCallActionType('sms');
+                        setPostCallActionConfig({
+                          phoneNumber: '',
+                          message: '',
+                          variables: []
+                        } as SMSConfig);
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <PhoneIcon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">SMS</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPostCallActionType('email');
+                        setPostCallActionConfig({
+                          to: '',
+                          subject: '',
+                          body: '',
+                          variables: []
+                        } as EmailConfig);
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <EnvelopeIcon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">Email</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPostCallActionType('api');
+                        setPostCallActionConfig({
+                          url: '',
+                          method: 'GET',
+                          variables: []
+                        } as APIConfig);
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <CommandLineIcon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">Requête API</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPostCallActionType('notification');
+                        setPostCallActionConfig({
+                          type: 'both',
+                          message: '',
+                          variables: []
+                        } as NotificationConfig);
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <BellIcon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">Notification</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Configuration Forms */}
+              {selectedPostCallActionType && (
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {/* Common Fields */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Nom <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={editingPostCallAction?.action.name || ''}
+                        onChange={(e) => {
+                          if (editingPostCallAction) {
+                            setEditingPostCallAction({
+                              ...editingPostCallAction,
+                              action: { ...editingPostCallAction.action, name: e.target.value }
+                            });
+                          }
+                        }}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="Nom de l'action"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Description
+                      </label>
+                      <input
+                        type="text"
+                        value={editingPostCallAction?.action.description || ''}
+                        onChange={(e) => {
+                          if (editingPostCallAction) {
+                            setEditingPostCallAction({
+                              ...editingPostCallAction,
+                              action: { ...editingPostCallAction.action, description: e.target.value }
+                            });
+                          }
+                        }}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="Description de l'action"
+                      />
+                    </div>
+
+                    {/* Type-specific Fields */}
+                    {selectedPostCallActionType === 'sms' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Numéro de téléphone <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={(postCallActionConfig as SMSConfig)?.phoneNumber || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as SMSConfig),
+                              phoneNumber: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            placeholder="+33123456789"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Message <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            value={(postCallActionConfig as SMSConfig)?.message || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as SMSConfig),
+                              message: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            rows={4}
+                            placeholder="Contenu du SMS"
+                            required
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {selectedPostCallActionType === 'email' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Destinataire <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="email"
+                            value={(postCallActionConfig as EmailConfig)?.to || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as EmailConfig),
+                              to: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            placeholder="email@example.com"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Sujet <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={(postCallActionConfig as EmailConfig)?.subject || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as EmailConfig),
+                              subject: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            placeholder="Sujet de l'email"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Contenu <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            value={(postCallActionConfig as EmailConfig)?.body || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as EmailConfig),
+                              body: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            rows={6}
+                            placeholder="Contenu de l'email"
+                            required
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {selectedPostCallActionType === 'api' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            URL <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="url"
+                            value={(postCallActionConfig as APIConfig)?.url || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as APIConfig),
+                              url: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            placeholder="https://api.example.com/endpoint"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Méthode <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={(postCallActionConfig as APIConfig)?.method || 'GET'}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as APIConfig),
+                              method: e.target.value as 'GET' | 'POST' | 'PUT' | 'DELETE'
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                          >
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            En-têtes (Headers)
+                          </label>
+                          <textarea
+                            value={JSON.stringify((postCallActionConfig as APIConfig)?.headers || {}, null, 2)}
+                            onChange={(e) => {
+                              try {
+                                const headers = JSON.parse(e.target.value);
+                                setPostCallActionConfig({
+                                  ...(postCallActionConfig as APIConfig),
+                                  headers
+                                });
+                              } catch (error) {
+                                // Handle invalid JSON
+                              }
+                            }}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm font-mono"
+                            rows={4}
+                            placeholder='{"Content-Type": "application/json"}'
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Corps de la requête (Body)
+                          </label>
+                          <textarea
+                            value={(postCallActionConfig as APIConfig)?.body || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as APIConfig),
+                              body: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm font-mono"
+                            rows={4}
+                            placeholder='{"key": "value"}'
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {selectedPostCallActionType === 'notification' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Type de notification <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={(postCallActionConfig as NotificationConfig)?.type || 'both'}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as NotificationConfig),
+                              type: e.target.value as 'sms' | 'email' | 'both'
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                          >
+                            <option value="sms">SMS uniquement</option>
+                            <option value="email">Email uniquement</option>
+                            <option value="both">SMS et Email</option>
+                          </select>
+                        </div>
+                        {(['sms', 'both'].includes((postCallActionConfig as NotificationConfig)?.type || 'both')) && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700">
+                              Numéro de téléphone <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={(postCallActionConfig as NotificationConfig)?.phoneNumber || ''}
+                              onChange={(e) => setPostCallActionConfig({
+                                ...(postCallActionConfig as NotificationConfig),
+                                phoneNumber: e.target.value
+                              })}
+                              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                              placeholder="+33123456789"
+                              required
+                            />
+                          </div>
+                        )}
+                        {(['email', 'both'].includes((postCallActionConfig as NotificationConfig)?.type || 'both')) && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700">
+                              Email <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="email"
+                              value={(postCallActionConfig as NotificationConfig)?.email || ''}
+                              onChange={(e) => setPostCallActionConfig({
+                                ...(postCallActionConfig as NotificationConfig),
+                                email: e.target.value
+                              })}
+                              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                              placeholder="email@example.com"
+                              required
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Message <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            value={(postCallActionConfig as NotificationConfig)?.message || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as NotificationConfig),
+                              message: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            rows={4}
+                            placeholder="Contenu de la notification"
+                            required
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Variables Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Variables disponibles
+                      </label>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {agent.variables.map((variable, index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => {
+                              const config = postCallActionConfig as any;
+                              if (config.variables) {
+                                if (!config.variables.includes(variable.name)) {
+                                  setPostCallActionConfig({
+                                    ...config,
+                                    variables: [...config.variables, variable.name]
+                                  });
+                                }
+                              } else {
+                                setPostCallActionConfig({
+                                  ...config,
+                                  variables: [variable.name]
+                                });
+                              }
+                            }}
+                            className={`px-3 py-1 text-sm rounded-full ${
+                              (postCallActionConfig as any)?.variables?.includes(variable.name)
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            {variable.name}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">
+                        Cliquez sur une variable pour l'ajouter au contenu. Utilisez {'{nom_variable}'} dans votre texte.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t flex justify-end gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPostCallActionModal(false);
+                  setSelectedPostCallActionType(null);
+                  setPostCallActionConfig(null);
+                  setEditingPostCallAction(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                Annuler
+              </button>
+              {selectedPostCallActionType && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (editingPostCallAction) {
+                      // Update existing action
+                      setAgent(prev => ({
+                        ...prev,
+                        postCallActions: prev.postCallActions.map((action, i) =>
+                          i === editingPostCallAction.index
+                            ? {
+                                ...action,
+                                type: selectedPostCallActionType,
+                                config: postCallActionConfig as any
+                              }
+                            : action
+                        )
+                      }));
+                    } else {
+                      // Add new action
+                      setAgent(prev => ({
+                        ...prev,
+                        postCallActions: [
+                          ...prev.postCallActions,
+                          {
+                            name: 'New Action',
+                            description: '',
+                            type: selectedPostCallActionType,
+                            config: postCallActionConfig as any,
+                            active: true
+                          }
+                        ]
+                      }));
+                    }
+                    setShowPostCallActionModal(false);
+                    setSelectedPostCallActionType(null);
+                    setPostCallActionConfig(null);
+                    setEditingPostCallAction(null);
+                  }}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  {editingPostCallAction ? 'Mettre à jour' : 'Ajouter'}
                 </button>
               )}
             </div>
