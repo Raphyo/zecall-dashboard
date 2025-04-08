@@ -429,39 +429,6 @@ export default function CreateCampaignPage() {
           },
         }}
       />
-      <Toaster
-        position="bottom-right"
-        reverseOrder={false}
-        containerStyle={{
-          bottom: '24px',
-          right: '24px',
-        }}
-        toastOptions={{
-          style: {
-            background: '#ffffff',
-            color: '#374151',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-            borderRadius: '8px',
-            padding: '16px',
-          },
-          success: {
-            duration: 4000,
-            style: {
-              background: '#F0FDF4',
-              color: '#166534',
-              border: '1px solid #DCFCE7',
-            },
-          },
-          error: {
-            duration: 6000,
-            style: {
-              background: '#FEF2F2',
-              color: '#991B1B',
-              border: '1px solid #FEE2E2',
-            },
-          },
-        }}
-      />
       {isSubmitting ? (
         <div className="w-full max-w-3xl mx-auto">
           <div className="h-8 w-48 bg-gray-200 rounded mb-6 animate-pulse" />

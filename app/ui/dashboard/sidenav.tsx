@@ -15,8 +15,31 @@ export default function SideNav() {
   const [isLoadingCheckout, setIsLoadingCheckout] = useState(false);
   const [rechargeAmount, setRechargeAmount] = useState<string>('15');
 
+  // Add polling interval for credit updates
   useEffect(() => {
-    fetchCredits();
+    fetchCredits(); // Initial fetch
+
+    // Set up polling interval (every 30 seconds)
+    const intervalId = setInterval(fetchCredits, 30000);
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(intervalId);
+  }, []); // Empty dependency array means this effect runs once on mount
+
+  // Add event listener for credit updates
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchCredits(); // Fetch credits when tab becomes visible
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Cleanup event listener
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const fetchCredits = async () => {

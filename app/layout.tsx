@@ -3,20 +3,20 @@ import '@/app/ui/global.css';
 import { inter } from '@/app/ui/fonts';
 import { Providers } from './providers';
 import { Analytics } from "@vercel/analytics/react"
-import { Toaster } from 'react-hot-toast';
+import { SessionProvider } from 'next-auth/react';
 
 export const metadata = {
-  title: 'zecall.ai',
-  description: 'Votre assistant virtuel pour les appels entrants et sortants',
+  title: 'Zecall',
+  description: 'Zecall - Votre assistant commercial intelligent',
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="fr">
       <head>
         <link
           rel="preload"
@@ -26,9 +26,10 @@ export default async function RootLayout({
       </head>
       <body className={`${inter.className} antialiased overscroll-x-auto`}>
         <Providers>
-          {children}
+          <SessionProvider>
+            {children}
+          </SessionProvider>
           <Analytics />
-          <Toaster position="top-center" />
         </Providers>
       </body>
     </html>
