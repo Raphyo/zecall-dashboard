@@ -1454,6 +1454,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       <PhoneIcon className="h-8 w-8 text-gray-600 mb-2" />
                       <span className="text-sm font-medium">Fin d'appel</span>
                     </button>
+                    {/* Temporarily disabled transfer call button
                     <button
                       type="button"
                       onClick={() => {
@@ -1469,6 +1470,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       <ArrowPathRoundedSquareIcon className="h-8 w-8 text-gray-600 mb-2" />
                       <span className="text-sm font-medium">Transfert d'appel</span>
                     </button>
+                    */}
                     <button
                       type="button"
                       onClick={() => {

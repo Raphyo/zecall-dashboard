@@ -341,8 +341,15 @@ function CallHistoryContent() {
         throw new Error('User ID not found');
       }
       await deleteCall(ids, session.user.id);
+      
+      // Update both calls and filteredCalls states by removing the deleted calls
+      const updatedCalls = calls.filter(call => !ids.includes(call.id));
+      const updatedFilteredCalls = filteredCalls.filter(call => !ids.includes(call.id));
+      
+      setCalls(updatedCalls);
+      setFilteredCalls(updatedFilteredCalls);
       setSelectedCalls([]);
-      await loadCalls(); // Refresh the list
+      
       setToast({
         message: ids.length > 1 ? 'Appels supprimés avec succès' : 'Appel supprimé avec succès',
         type: 'success'
@@ -464,6 +471,16 @@ function CallHistoryContent() {
             </svg>
             {isRefreshing ? 'Actualisation...' : 'Actualiser'}
           </button>
+          {selectedCalls.length > 0 && (
+            <button
+              onClick={() => handleDelete(selectedCalls)}
+              disabled={isDeletingCalls}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-md hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <TrashIcon className="w-5 h-5" />
+              Supprimer ({selectedCalls.length})
+            </button>
+          )}
           <button
             onClick={() => exportCallsToCSV(filteredCalls)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
@@ -487,6 +504,14 @@ function CallHistoryContent() {
               <table className="min-w-full divide-y divide-gray-200 table-fixed">
                 <thead>
                   <tr className="bg-gray-50">
+                    <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pr-0 w-12">
+                      <input
+                        type="checkbox"
+                        className="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
+                        checked={selectedCalls.length === filteredCalls.length && filteredCalls.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                      />
+                    </th>
                     <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pr-0 w-24">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -523,11 +548,22 @@ function CallHistoryContent() {
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Campagne
                     </th>
+                    <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pr-0 w-12">
+                      <span className="sr-only">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {filteredCalls.map((call) => (
                     <tr key={call.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
+                          checked={selectedCalls.includes(call.id)}
+                          onChange={(e) => handleSelectCall(call.id, e.target.checked)}
+                        />
+                      </td>
                       <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
                         <div className="flex gap-2">
                           {call.recording_url && (
@@ -563,7 +599,7 @@ function CallHistoryContent() {
                           )}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.id.substring(0, 7)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
@@ -647,7 +683,6 @@ function CallHistoryContent() {
                             title={call.campaign_name}
                             onClick={(e) => handleTextExpand(call.campaign_name || '', e)}
                             onTouchEnd={(e) => {
-                              // Convert TouchEvent to MouseEvent-like object for our handler
                               const mouseEvent = {
                                 currentTarget: e.currentTarget,
                                 preventDefault: () => e.preventDefault(),
@@ -662,6 +697,16 @@ function CallHistoryContent() {
                             {call.campaign_name}
                           </span>
                         ) : '-'}
+                      </td>
+                      <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
+                        <button
+                          onClick={() => handleDelete([call.id])}
+                          disabled={isDeletingCalls}
+                          className="p-1 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors"
+                          title="Supprimer l'appel"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
                       </td>
                     </tr>
                   ))}
