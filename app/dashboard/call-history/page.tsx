@@ -16,6 +16,7 @@ function CallHistoryContent() {
   const [filteredCalls, setFilteredCalls] = useState<Call[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingCalls, setIsDeletingCalls] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [selectedCalls, setSelectedCalls] = useState<string[]>([]);
   const [currentFilters, setCurrentFilters] = useState<FilterState>({
@@ -42,7 +43,7 @@ function CallHistoryContent() {
     position: { x: number; y: number }; 
     colorClass?: string 
   } | null>(null);
-  const REFRESH_INTERVAL = 60000; // Refresh every 60 seconds
+  const REFRESH_INTERVAL = 30000; // Refresh every 30 seconds
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Add a ref to track if we're on a touch device
@@ -58,6 +59,8 @@ function CallHistoryContent() {
     try {
       if (!isRefresh) {
         setIsLoading(true);
+      } else {
+        setIsRefreshing(true);
       }
 
       if (!session?.user?.id) {
@@ -112,13 +115,23 @@ function CallHistoryContent() {
         }
       }
     } catch (error) {
-      console.error('Error loading call data - please check server logs');
+      console.error('Error loading call data:', error);
+      setToast({
+        message: 'Failed to refresh call data. Please try again.',
+        type: 'error'
+      });
     } finally {
       if (!isRefresh) {
         setIsLoading(false);
       }
+      setIsRefreshing(false);
       setIsInitialLoad(false);
     }
+  };
+
+  // Manual refresh function
+  const handleManualRefresh = () => {
+    loadCalls(true);
   };
 
   // Set up auto-refresh
@@ -128,7 +141,7 @@ function CallHistoryContent() {
 
     // Set up interval for periodic refresh
     refreshIntervalRef.current = setInterval(() => {
-      loadCalls(true); // Pass true to indicate this is a refresh
+      loadCalls(true);
     }, REFRESH_INTERVAL);
 
     // Cleanup function
@@ -137,14 +150,40 @@ function CallHistoryContent() {
         clearInterval(refreshIntervalRef.current);
       }
     };
-  }, [session, campaignId, currentFilters]); // Added currentFilters to dependencies
+  }, [session, campaignId]); // Removed currentFilters from dependencies to prevent too frequent refreshes
 
-  // Add a separate effect to handle filter changes
+  // Separate effect for filter changes
   useEffect(() => {
     if (!isInitialLoad) {
-      loadCalls(true);
+      const filtered = calls.filter(call => {
+        const matchCallerNumber = !currentFilters.callerNumber || 
+          call.caller_number.toLowerCase().includes(currentFilters.callerNumber.toLowerCase());
+        const matchCalleeNumber = !currentFilters.calleeNumber || 
+          call.callee_number.toLowerCase().includes(currentFilters.calleeNumber.toLowerCase());
+        const matchCategory = !currentFilters.category || 
+          call.call_category === currentFilters.category;
+        const matchCampaign = !currentFilters.campaignId ||
+          call.campaign_id === currentFilters.campaignId;
+        const matchStatus = !currentFilters.callStatus ||
+          call.call_status === currentFilters.callStatus;
+        const matchDirection = !currentFilters.direction ||
+          call.direction === currentFilters.direction;
+        
+        const callDate = new Date(call.date);
+        const selectedDate = currentFilters.date ? new Date(currentFilters.date) : null;
+        
+        const matchDate = !selectedDate || (
+          callDate.getFullYear() === selectedDate.getFullYear() &&
+          callDate.getMonth() === selectedDate.getMonth() &&
+          callDate.getDate() === selectedDate.getDate()
+        );
+        
+        return matchCallerNumber && matchCalleeNumber && matchCategory && 
+               matchCampaign && matchDate && matchStatus && matchDirection;
+      });
+      setFilteredCalls(filtered);
     }
-  }, [currentFilters]);
+  }, [currentFilters, calls]);
 
   const handlePlayAudio = (url: string, id: string, name: string) => {
     // Find the call to get its duration from the database
@@ -404,6 +443,27 @@ function CallHistoryContent() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Historique des appels</h1>
         <div className="flex items-center gap-4">
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg
+              className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`}
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {isRefreshing ? 'Actualisation...' : 'Actualiser'}
+          </button>
           <button
             onClick={() => exportCallsToCSV(filteredCalls)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"

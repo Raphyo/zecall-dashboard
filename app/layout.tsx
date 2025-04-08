@@ -6,7 +6,7 @@ import { Analytics } from "@vercel/analytics/react"
 import { SessionProvider } from 'next-auth/react';
 
 export const metadata = {
-  title: 'Zecall',
+  title: 'zecall.ai',
   description: 'Zecall - Votre assistant commercial intelligent',
 };
 
