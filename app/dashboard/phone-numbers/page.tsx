@@ -100,6 +100,27 @@ export default function PhoneNumbersPage() {
           if (!response.ok) {
             throw new Error(`Failed to update phone number ${phoneNumberId}`);
           }
+
+          // Find the phone number object to get the actual number
+          const phoneNumberObj = phoneNumbers.find(pn => pn.id === phoneNumberId);
+          if (!phoneNumberObj) {
+            throw new Error(`Phone number with ID ${phoneNumberId} not found`);
+          }
+
+          // Call the webhook after successful phone number update
+          const webhookResponse = await fetch(
+            `${ORCHESTRATOR_URL}/webhook/config-update?phone_number=${encodeURIComponent(phoneNumberObj.number)}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              }
+            }
+          );
+
+          if (!webhookResponse.ok) {
+            throw new Error(`Failed to update configuration for phone number ${phoneNumberId}`);
+          }
         } catch (err) {
           errors.push(`Failed to update phone number ${phoneNumberId}`);
         }
@@ -107,12 +128,12 @@ export default function PhoneNumbersPage() {
 
       if (errors.length > 0) {
         setToast({
-          message: `Some updates failed: ${errors.join(', ')}`,
+          message: `Certaines mises à jour ont échoué : ${errors.join(', ')}`,
           type: 'error'
         });
       } else {
         setToast({
-          message: 'All changes saved successfully',
+          message: 'Toutes les modifications ont été enregistrées',
           type: 'success'
         });
         setPendingChanges({});
@@ -120,7 +141,7 @@ export default function PhoneNumbersPage() {
       }
     } catch (err) {
       setToast({
-        message: 'Failed to save changes',
+        message: 'Échec de l\'enregistrement des modifications',
         type: 'error'
       });
     } finally {

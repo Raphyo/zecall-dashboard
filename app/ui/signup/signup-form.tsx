@@ -5,12 +5,13 @@ import { register } from '@/app/lib/actions';
 import { Button } from '@/app/ui/button';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { lusitana } from '@/app/ui/fonts';
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
     <Button className="w-full mt-4" aria-disabled={pending}>
-      Sign up <span className="ml-2">→</span>
+      S'inscrire <span className="ml-2">→</span>
     </Button>
   );
 }
@@ -29,7 +30,7 @@ export default function SignUpForm() {
   return (
     <form action={formAction} className="space-y-3">
       <div className="flex-1 rounded-lg bg-gray-50 px-6 pb-4 pt-8">
-        <h1 className="mb-3 text-2xl">Create an account.</h1>
+        <h1 className={`${lusitana.className} mb-3 text-2xl`}>Créer un compte</h1>
         <div className="w-full">
           {/* Name field */}
           <div>
@@ -37,21 +38,21 @@ export default function SignUpForm() {
               className="mb-3 mt-5 block text-xs font-medium text-gray-900"
               htmlFor="name"
             >
-              Name
+              Nom
             </label>
             <input
               className="peer block w-full rounded-md border border-gray-200 py-[9px] pl-10 text-sm outline-2 placeholder:text-gray-500"
               id="name"
               type="text"
               name="name"
-              placeholder="Enter your name"
+              placeholder="Entrez votre nom"
               required
             />
           </div>
           <div className="mt-4 text-center text-sm">
-              Already have an account?{' '}
+              Vous avez déjà un compte ?{' '}
               <Link href="/login" className="text-blue-500 hover:text-blue-600">
-                Log in
+                Se connecter
               </Link>
           </div>
           {/* Email field */}
@@ -67,7 +68,7 @@ export default function SignUpForm() {
               id="email"
               type="email"
               name="email"
-              placeholder="Enter your email address"
+              placeholder="Entrez votre adresse email"
               required
             />
           </div>
@@ -78,14 +79,14 @@ export default function SignUpForm() {
               className="mb-3 mt-5 block text-xs font-medium text-gray-900"
               htmlFor="password"
             >
-              Password
+              Mot de passe
             </label>
             <input
               className="peer block w-full rounded-md border border-gray-200 py-[9px] pl-10 text-sm outline-2 placeholder:text-gray-500"
               id="password"
               type="password"
               name="password"
-              placeholder="Enter password"
+              placeholder="Entrez votre mot de passe"
               required
               minLength={6}
             />

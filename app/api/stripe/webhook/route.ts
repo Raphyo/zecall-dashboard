@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-    console.log('✅ Webhook signature verified, processing event:', event.type);
+    console.log('✅ Webhook signature verified');
   } catch (err) {
     const error = err as Error;
     console.error('❌ Webhook signature verification failed:', error.message);
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        console.log('💰 Processing completed checkout session:', session.id);
+        console.log('💰 Processing checkout session');
         
         // Extract amount and user ID from metadata
         const amount = Number(session.metadata?.amount || 0);
@@ -87,7 +87,6 @@ export async function POST(request: Request) {
         formData.append('amount', amount.toString());
         formData.append('stripe_payment_id', paymentIntentId);
 
-        console.log('🔵 Adding credits at:', `${ANALYTICS_URL}/api/credits/add`);
         const response = await fetch(`${ANALYTICS_URL}/api/credits/add`, {
           method: 'POST',
           body: formData
@@ -99,17 +98,17 @@ export async function POST(request: Request) {
         }
 
         const result = await response.json();
-        console.log('✅ Credits added successfully:', result);
+        console.log('✅ Credits added');
         break;
       }
       default: {
-        console.log('⏩ Ignoring unhandled event type:', event.type);
+        console.log('⏩ Unhandled event type:', event.type);
       }
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('❌ Webhook handler failed:', error);
+    console.error('❌ Webhook handler error - please check logs');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Webhook handler failed' },
       { status: 500 }
