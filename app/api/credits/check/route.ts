@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { ANALYTICS_URL } from '@/app/lib/api';
-import { CALL_COST_PER_MINUTE } from '@/app/lib/constants';
+import { CALL_COST_PER_SECOND } from '@/app/lib/constants';
 
 export async function GET(request: Request) {
   try {
@@ -16,9 +16,9 @@ export async function GET(request: Request) {
 
     // Get duration from query params
     const { searchParams } = new URL(request.url);
-    const durationMinutes = Number(searchParams.get('duration_minutes') || '0');
+    const durationSeconds = Number(searchParams.get('duration_seconds') || '0');
 
-    if (!durationMinutes || durationMinutes <= 0) {
+    if (!durationSeconds || durationSeconds <= 0) {
       return NextResponse.json(
         { error: 'Invalid duration' },
         { status: 400 }
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     }
 
     // Calculate estimated cost
-    const estimatedCost = durationMinutes * CALL_COST_PER_MINUTE;
+    const estimatedCost = durationSeconds * CALL_COST_PER_SECOND;
 
     // Get current balance
     const response = await fetch(`${ANALYTICS_URL}/api/credits?user_id=${session.user.id}`);
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       has_sufficient_credits: hasSufficientCredits,
       current_balance: currentBalance,
       estimated_cost: estimatedCost,
-      duration_minutes: durationMinutes
+      duration_seconds: durationSeconds
     });
   } catch (error) {
     console.error('Failed to check credits:', error);
