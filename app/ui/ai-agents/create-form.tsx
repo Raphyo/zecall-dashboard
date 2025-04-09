@@ -960,6 +960,88 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
             </div>
           </div>
 
+          {/* Variables Section */}
+          <div className="p-6 border-t border-gray-100">
+            <div className="flex items-center mb-6">
+              <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
+              <h2 className="text-lg font-medium">Variables</h2>
+            </div>
+            <div>
+              <p className="mt-1 text-sm text-gray-500 mb-4">
+                Gérez les variables qui seront disponibles pendant l'appel. Les variables intégrées sont automatiquement disponibles.
+                Pour utiliser une variable dans le prompt, entourez-la d'accolades, par exemple : {'{from_number}'} ou {'{ma_variable}'}.
+              </p>
+
+              {/* Variables List */}
+              <div className="space-y-3 mb-4">
+                {agent.variables.map((variable, index) => (
+                  <div 
+                    key={index} 
+                    className={`flex items-center justify-between p-3 border rounded-md ${
+                      !variable.isBuiltIn ? 'cursor-pointer hover:bg-gray-50' : ''
+                    }`}
+                    onClick={() => handleEditVariable(index, variable)}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div>
+                        <p className="font-medium text-sm">{variable.name}</p>
+                        <p className="text-xs text-gray-500">Type: {variable.type}</p>
+                      </div>
+                      {variable.source && (
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          variable.source === 'built-in' 
+                            ? 'bg-blue-100 text-blue-800'
+                            : variable.source === 'CSV input'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {variable.source}
+                        </span>
+                      )}
+                    </div>
+                    {!variable.isBuiltIn && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAgent({
+                            ...agent,
+                            variables: agent.variables.filter((_, i) => i !== index)
+                          });
+                        }}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-full"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Add Variable Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  // Initialize with a default new variable
+                  setEditingVariable({
+                    index: -1,
+                    variable: {
+                      name: '',
+                      type: 'String',
+                      source: 'CSV input',
+                      isBuiltIn: false
+                    }
+                  });
+                  setShowVariableModal(true);
+                }}
+                className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                <PlusIcon className="h-5 w-5 mr-2" />
+                Ajouter une variable
+              </button>
+            </div>
+          </div>
+
           {/* LLM Prompt Section */}
           <div className="p-6 border-t border-gray-100">
             <div className="flex items-center mb-6">
@@ -969,17 +1051,149 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
             <div>
               <p className="mt-1 text-sm text-gray-500 mb-4">
                 Le prompt vous permettra de guider votre agent IA dans le déroulement de l'appel.
+                Utilisez les variables disponibles ci-dessous ou commencez à taper pour voir les suggestions.
               </p>
-              <textarea
-                id="prompt"
-                name="prompt"
-                rows={4}
-                value={agent.llmPrompt}
-                onChange={(e) => setAgent(prev => ({ ...prev, llmPrompt: e.target.value }))}
-                className="mt-2 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                placeholder="Entrez votre prompt ici..."
-                required
-              />
+              <div className="relative">
+                <textarea
+                  id="prompt"
+                  name="prompt"
+                  rows={4}
+                  value={agent.llmPrompt}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setAgent(prev => ({ ...prev, llmPrompt: newValue }));
+                    
+                    // Check if we should show suggestions
+                    const lastOpenBrace = newValue.lastIndexOf('{');
+                    if (lastOpenBrace !== -1 && lastOpenBrace > newValue.lastIndexOf('}')) {
+                      const searchText = newValue.slice(lastOpenBrace + 1).toLowerCase();
+                      const filteredVariables = agent.variables.filter(v => 
+                        v.name.toLowerCase().includes(searchText)
+                      );
+                      if (filteredVariables.length > 0) {
+                        const cursorPosition = e.target.selectionStart;
+                        const rect = e.target.getBoundingClientRect();
+                        const lineHeight = parseInt(window.getComputedStyle(e.target).lineHeight);
+                        const lines = newValue.slice(0, cursorPosition).split('\n');
+                        const currentLine = lines.length;
+                        
+                        // Show suggestions box at cursor position
+                        const suggestionBox = document.getElementById('variableSuggestions');
+                        if (suggestionBox) {
+                          suggestionBox.style.display = 'block';
+                          suggestionBox.style.top = `${rect.top + (currentLine * lineHeight)}px`;
+                          suggestionBox.style.left = `${rect.left}px`;
+                        }
+                      }
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    const suggestionBox = document.getElementById('variableSuggestions');
+                    if (suggestionBox && suggestionBox.style.display === 'block') {
+                      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        // Handle suggestion navigation
+                        const suggestions = suggestionBox.getElementsByTagName('button');
+                        const currentIndex = Array.from(suggestions).findIndex(el => el.classList.contains('bg-blue-50'));
+                        let nextIndex;
+                        if (e.key === 'ArrowDown') {
+                          nextIndex = currentIndex === suggestions.length - 1 ? 0 : currentIndex + 1;
+                        } else {
+                          nextIndex = currentIndex <= 0 ? suggestions.length - 1 : currentIndex - 1;
+                        }
+                        Array.from(suggestions).forEach((s, i) => {
+                          s.classList.toggle('bg-blue-50', i === nextIndex);
+                        });
+                      } else if (e.key === 'Enter' || e.key === 'Tab') {
+                        e.preventDefault();
+                        const selectedSuggestion = suggestionBox.querySelector('button.bg-blue-50');
+                        if (selectedSuggestion) {
+                          const variableName = selectedSuggestion.getAttribute('data-variable');
+                          if (variableName) {
+                            const currentValue = e.currentTarget.value;
+                            const lastOpenBrace = currentValue.lastIndexOf('{');
+                            const newValue = currentValue.slice(0, lastOpenBrace) + '{' + variableName + '}' + currentValue.slice(e.currentTarget.selectionStart);
+                            setAgent(prev => ({ ...prev, llmPrompt: newValue }));
+                          }
+                        }
+                        suggestionBox.style.display = 'none';
+                      } else if (e.key === 'Escape') {
+                        suggestionBox.style.display = 'none';
+                      }
+                    }
+                  }}
+                  className="mt-2 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  placeholder="Entrez votre prompt ici..."
+                  required
+                />
+                <div
+                  id="variableSuggestions"
+                  className="absolute z-10 w-64 max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg hidden"
+                >
+                  {agent.variables.map((variable, index) => (
+                    <button
+                      key={index}
+                      data-variable={variable.name}
+                      onClick={() => {
+                        const textarea = document.getElementById('prompt') as HTMLTextAreaElement;
+                        if (textarea) {
+                          const currentValue = textarea.value;
+                          const lastOpenBrace = currentValue.lastIndexOf('{');
+                          const newValue = currentValue.slice(0, lastOpenBrace) + '{' + variable.name + '}' + currentValue.slice(textarea.selectionStart);
+                          setAgent(prev => ({ ...prev, llmPrompt: newValue }));
+                          const suggestionBox = document.getElementById('variableSuggestions');
+                          if (suggestionBox) {
+                            suggestionBox.style.display = 'none';
+                          }
+                        }
+                      }}
+                      className={`w-full text-left px-4 py-2 flex items-center justify-between ${
+                        variable.isBuiltIn 
+                          ? 'hover:bg-blue-50 text-blue-700'
+                          : 'hover:bg-green-50 text-green-700'
+                      } ${index === 0 ? (variable.isBuiltIn ? 'bg-blue-50' : 'bg-green-50') : ''}`}
+                    >
+                      <span className="font-medium">{variable.name}</span>
+                      <span className={`text-xs ${variable.isBuiltIn ? 'text-blue-500' : 'text-green-500'}`}>
+                        {variable.type}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Quick access to variables */}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {agent.variables.map((variable, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => {
+                      const textarea = document.getElementById('prompt') as HTMLTextAreaElement;
+                      if (textarea) {
+                        const cursorPos = textarea.selectionStart;
+                        const textBefore = textarea.value.substring(0, cursorPos);
+                        const textAfter = textarea.value.substring(cursorPos);
+                        const newValue = textBefore + '{' + variable.name + '}' + textAfter;
+                        setAgent(prev => ({ ...prev, llmPrompt: newValue }));
+                        // Set cursor position after the inserted variable
+                        setTimeout(() => {
+                          textarea.focus();
+                          const newCursorPos = cursorPos + variable.name.length + 2;
+                          textarea.setSelectionRange(newCursorPos, newCursorPos);
+                        }, 0);
+                      }
+                    }}
+                    className={`px-2 py-1 text-sm rounded-full flex items-center gap-1 ${
+                      variable.isBuiltIn 
+                        ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        : 'bg-green-100 text-green-700 hover:bg-green-200'
+                    }`}
+                  >
+                    <span>{variable.name}</span>
+                    <span className={`text-xs ${variable.isBuiltIn ? 'text-blue-500' : 'text-green-500'}`}>({variable.type})</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1163,88 +1377,6 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Variables Section */}
-          <div className="p-6 border-t border-gray-100">
-            <div className="flex items-center mb-6">
-              <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
-              <h2 className="text-lg font-medium">Variables</h2>
-            </div>
-            <div>
-              <p className="mt-1 text-sm text-gray-500 mb-4">
-                Gérez les variables qui seront disponibles pendant l'appel. Les variables intégrées sont automatiquement disponibles.
-                Pour utiliser une variable dans le prompt, entourez-la d'accolades, par exemple : {'{from_number}'} ou {'{ma_variable}'}.
-              </p>
-
-              {/* Variables List */}
-              <div className="space-y-3 mb-4">
-                {agent.variables.map((variable, index) => (
-                  <div 
-                    key={index} 
-                    className={`flex items-center justify-between p-3 border rounded-md ${
-                      !variable.isBuiltIn ? 'cursor-pointer hover:bg-gray-50' : ''
-                    }`}
-                    onClick={() => handleEditVariable(index, variable)}
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div>
-                        <p className="font-medium text-sm">{variable.name}</p>
-                        <p className="text-xs text-gray-500">Type: {variable.type}</p>
-                      </div>
-                      {variable.source && (
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          variable.source === 'built-in' 
-                            ? 'bg-blue-100 text-blue-800'
-                            : variable.source === 'CSV input'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {variable.source}
-                        </span>
-                      )}
-                    </div>
-                    {!variable.isBuiltIn && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAgent({
-                            ...agent,
-                            variables: agent.variables.filter((_, i) => i !== index)
-                          });
-                        }}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-full"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Add Variable Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  // Initialize with a default new variable
-                  setEditingVariable({
-                    index: -1,
-                    variable: {
-                      name: '',
-                      type: 'String',
-                      source: 'CSV input',
-                      isBuiltIn: false
-                    }
-                  });
-                  setShowVariableModal(true);
-                }}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-              >
-                <PlusIcon className="h-5 w-5 mr-2" />
-                Ajouter une variable
-              </button>
             </div>
           </div>
 
