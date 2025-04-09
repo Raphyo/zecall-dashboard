@@ -107,6 +107,7 @@ interface AIAgent {
   knowledge_base_path?: string;
   variables?: Variable[];
   labels?: string[];
+  vad_stop_secs?: number;
   post_call_actions?: PostCallAction[];
 }
 
@@ -132,6 +133,8 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     variables: initialData?.variables || [...builtInVariables],
     labels: initialData?.labels || [],
     postCallActions: initialData?.post_call_actions || []
+    labels: initialData?.labels || [],
+    vadStopSecs: initialData?.vad_stop_secs || 0.8
   });
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
@@ -253,6 +256,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
     setIsSubmitting(true);
     try {
+      console.log('Debug - Initial vad_stop_secs value:', agent.vadStopSecs);
       const formData = new FormData();
       formData.append('name', agent.name);
       formData.append('voice_name', agent.voiceName);
@@ -266,7 +270,12 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       formData.append('max_retries', agent.maxRetries.toString());
       formData.append('max_call_duration', agent.maxCallDuration.toString());
       formData.append('labels', JSON.stringify(agent.labels));
-      
+      formData.append('vad_stop_secs', agent.vadStopSecs.toString());
+      console.log('Debug - FormData after appending vad_stop_secs:');
+      for (const [key, value] of formData.entries()) {
+        console.log(`${key}: ${value}`);
+      }
+
       // Filter out built-in variables and convert to dynamic_variables
       const dynamicVariables = agent.variables.filter(v => !v.isBuiltIn);
       formData.append('dynamic_variables', JSON.stringify(dynamicVariables));
@@ -283,8 +292,16 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       let savedAgent: AIAgent;
       if (agentId) {
         savedAgent = await updateAIAgent(agentId, formData);
+        setToast({
+          message: 'Agent mis à jour avec succès',
+          type: 'success'
+        });
       } else {
         savedAgent = await createAIAgent(formData, session.user.id);
+        setToast({
+          message: 'Agent créé avec succès',
+          type: 'success'
+        });
       }
 
       // Create or update functions for the agent
@@ -384,8 +401,9 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
       router.push('/dashboard/ai-agents');
     } catch (error: any) {
+      console.error('Error saving agent:', error);
       setToast({
-        message: `Error: ${error.message || 'An error occurred while saving the agent'}`,
+        message: `Erreur: ${error.message || 'Une erreur est survenue lors de l\'enregistrement de l\'agent'}`,
         type: 'error'
       });
     } finally {
@@ -737,7 +755,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   const handleTogglePostCallAction = (index: number) => {
     setAgent(prev => ({
       ...prev,
-      postCallActions: prev.postCallActions.map((action, i) => 
+      postCallActions: prev.postCallActions.map((action, i) =>
         i === index ? { ...action, active: !action.active } : action
       )
     }));
@@ -1064,6 +1082,50 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       <span>5</span>
                     </div>
                   </div>
+
+                  <div className="flex flex-col space-y-2">
+                    <div className="flex items-center group relative">
+                      <label htmlFor="vadStopSecs" className="text-sm text-gray-700">
+                        Délai de pause VAD (Voice Activity Detection)
+                      </label>
+                      <div className="relative inline-block ml-2">
+                        <InformationCircleIcon className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block w-96 bg-gray-900 text-white text-sm rounded-lg p-4 shadow-lg z-10">
+                          <div className="relative">
+                            <div className="text-xs space-y-2">
+                              <p>Lorsque le VAD détecte que l'utilisateur parle, il commence à capturer l'audio.</p>
+                              <p>En cas de pause de parole, le VAD ne s'arrête pas immédiatement.</p>
+                              <p>Il attend plutôt la durée spécifiée par le délai de pause.</p>
+                              <p>Si la parole reprend pendant ce délai, le VAD continue la capture dans le même segment.</p>
+                              <p>Si le silence persiste pendant toute la durée du délai, le VAD considère le segment de parole comme terminé et arrête la capture.</p>
+                              <p className="font-semibold mt-2">Ce paramètre permet de :</p>
+                              <ul className="list-disc pl-4">
+                                <li>Empêcher le VAD de s'arrêter prématurément lors de brèves pauses dans la parole.</li>
+                                <li>Permettre des pauses naturelles dans la conversation sans fragmenter la parole en plusieurs segments.</li>
+                                <li>Ajuster la sensibilité du VAD aux pauses en fonction du cas d'utilisation ou des habitudes de parole.</li>
+                              </ul>
+                            </div>
+                            <div className="absolute w-3 h-3 bg-gray-900 transform rotate-45 left-1/2 -translate-x-1/2 -bottom-1.5"></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <input
+                      type="range"
+                      id="vadStopSecs"
+                      min="0.1"
+                      max="2.0"
+                      step="0.1"
+                      value={agent.vadStopSecs || 0.8}
+                      onChange={(e) => setAgent(prev => ({ ...prev, vadStopSecs: Number(e.target.value) }))}
+                      className="w-full"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>0.1s</span>
+                      <span className="font-bold text-sm text-gray-700">{agent.vadStopSecs || 0.8}s</span>
+                      <span>2.0s</span>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1360,7 +1422,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               <p className="mt-1 text-sm text-gray-500 mb-4">
                 Configurez les actions à exécuter automatiquement après chaque appel (envoi de SMS, email, notifications, etc.).
               </p>
-              
+
               {/* Post-Call Actions List */}
               <div className="space-y-3 mb-4">
                 {agent.postCallActions.map((action, index) => (
