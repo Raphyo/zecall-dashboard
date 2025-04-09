@@ -343,8 +343,7 @@ export default function CreateCampaignPage() {
             <p className="font-medium mb-1">Format de numéro de téléphone invalide</p>
             <p className="mb-2">Les formats acceptés sont:</p>
             <ul className="list-disc pl-4 mb-2 text-xs">
-              <li>Format français: +33612345678 ou 0612345678</li>
-              <li>Format israélien: +972512345678</li>
+              <li>Format français: +33612345678 ou 0612345678 ou 33612345678</li>
             </ul>
             <p className="text-xs text-red-600">Exemples d'erreurs:</p>
             <pre className="text-xs mt-1 bg-red-50 p-2 rounded">{examples}</pre>
