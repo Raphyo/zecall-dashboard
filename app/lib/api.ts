@@ -23,6 +23,7 @@ export interface AIAgent {
     created_at: string;
     user_id: string;
     variables?: Variable[];
+    vad_stop_secs?: number;
 }
 
 export interface Campaign {
@@ -254,13 +255,8 @@ export async function createCampaign(formData: FormData): Promise<Campaign> {
             } else if (response.status === 404) {
                 errorMessage = 'Numéro de téléphone non trouvé';
             } else if (response.status === 400) {
-                // Clean up error message by removing status code prefix if present
-                errorMessage = errorMessage.replace(/^400:\s*/, '');
-                
-                if (errorMessage.includes('CSV must contain \'phone_number\' column')) {
+                if (errorMessage === 'CSV must contain \'phone_number\' column') {
                     errorMessage = 'Le fichier CSV doit contenir une colonne "phone_number"';
-                } else if (errorMessage.includes('phone_number')) {
-                    errorMessage = 'Le fichier CSV doit contenir une colonne "phone_number" valide';
                 } else {
                     errorMessage = 'Données de campagne invalides: ' + errorMessage;
                 }
