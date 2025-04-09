@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { getPhoneNumbers, createCampaign, type PhoneNumber } from '@/app/lib/api';
 import { useSession } from 'next-auth/react';
 import { toast, Toaster } from 'react-hot-toast';
+import Link from 'next/link';
 
 interface CampaignForm {
   name: string;
@@ -76,6 +77,24 @@ export default function CreateCampaignPage() {
 
     if (!campaign.phoneNumberId) {
       toast.error('Un numéro de téléphone est requis');
+      return;
+    }
+
+    // Check if the selected phone number has an assigned agent
+    const selectedPhoneNumber = phoneNumbers.find(n => n.id === campaign.phoneNumberId);
+    if (!selectedPhoneNumber?.agent_id) {
+      toast.error(
+        <div className="text-sm">
+          <p className="font-medium mb-1">Agent IA non assigné</p>
+          <p>Veuillez assigner un agent IA au numéro de téléphone sélectionné avant de lancer la campagne.</p>
+          <p className="mt-2">
+            <Link href="/dashboard/phone-numbers" className="text-blue-600 hover:text-blue-800">
+              Gérer les agents IA →
+            </Link>
+          </p>
+        </div>,
+        { duration: 6000 }
+      );
       return;
     }
 
