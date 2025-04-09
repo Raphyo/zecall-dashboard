@@ -63,20 +63,24 @@ export default function CreateCampaignPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    let loadingToast: string | undefined;
     
     // Validate required fields
     if (!campaign.name.trim()) {
       toast.error('Le nom de la campagne est requis');
+      setIsSubmitting(false);
       return;
     }
 
     if (!campaign.contactsFile) {
       toast.error('La liste des contacts est requise');
+      setIsSubmitting(false);
       return;
     }
 
     if (!campaign.phoneNumberId) {
       toast.error('Un numéro de téléphone est requis');
+      setIsSubmitting(false);
       return;
     }
 
@@ -95,6 +99,7 @@ export default function CreateCampaignPage() {
         </div>,
         { duration: 6000 }
       );
+      setIsSubmitting(false);
       return;
     }
 
@@ -149,18 +154,20 @@ export default function CreateCampaignPage() {
           </div>,
           { duration: 5000 }
         );
+        setIsSubmitting(false);
         return;
       }
 
-      // Check if it's within business hours (10:00-13:00 and 14:00-20:00 French time)
-      if (hours < 10 || hours === 13 || hours >= 20) {
+      // Check if it's within business hours (10:00-13:00 and 14:00-21:00 French time)
+      if (hours < 10 || hours === 13 || hours >= 21) {
         toast.error(
           <div className="text-sm">
             <p className="font-medium">Horaires non autorisés</p>
-            <p>Les campagnes ne peuvent être lancées qu'entre 10h et 20h (hors 13h-14h).</p>
+            <p>Les campagnes ne peuvent être lancées qu'entre 10h et 21h (hors 13h-14h).</p>
           </div>,
           { duration: 5000 }
         );
+        setIsSubmitting(false);
         return;
       }
 
@@ -183,9 +190,22 @@ export default function CreateCampaignPage() {
         apiFormData.append('scheduled_date', selectedDate);
       }
 
-      // Show success toast and redirect immediately
-      toast.success('Campagne en cours de création...', {
-        duration: 3000,
+      console.log('Creating campaign with status:', status);
+      
+      // Show loading toast without auto-dismiss
+      loadingToast = toast.loading('Création de la campagne en cours...', {
+        duration: Infinity,  // Make toast stay until manually dismissed
+        position: 'bottom-right',
+      });
+
+      const response = await createCampaign(apiFormData);
+      
+      // Dismiss loading toast
+      toast.dismiss(loadingToast);
+      
+      // If we get here, the campaign was created successfully
+      toast.success('Campagne créée avec succès', {
+        duration: 4000,
         position: 'bottom-right',
       });
 
@@ -193,14 +213,15 @@ export default function CreateCampaignPage() {
       setTimeout(() => {
         router.push('/dashboard/campaigns');
       }, 500);
-
-      console.log('Creating campaign with status:', status);
-      await createCampaign(apiFormData);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating campaign:', error);
-      // Show error toast but don't redirect back since user is already on campaigns page
-      toast.error('Erreur lors de la création de la campagne', {
-        duration: 5000,
+      // Dismiss any existing toasts
+      toast.dismiss(loadingToast);
+      
+      // Show detailed error message from API if available
+      const errorMessage = error.message || 'Erreur lors de la création de la campagne';
+      toast.error(errorMessage, {
+        duration: 6000,  // Show error for longer
         position: 'bottom-right',
       });
     } finally {
@@ -255,17 +276,88 @@ export default function CreateCampaignPage() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
+      const lines = text.split('\n');
+      const headers = lines[0].toLowerCase();
+      
       // Validate CSV structure
-      const headers = text.split('\n')[0].toLowerCase();
       if (!headers.includes('phone_number')) {
-        toast.error('Le fichier CSV doit contenir une colonne "phone_number"');
+        toast.error(
+          <div className="text-sm">
+            <p className="font-medium mb-1">Structure du fichier CSV invalide</p>
+            <p className="mb-2">Le fichier doit contenir une colonne nommée "phone_number"</p>
+            <p className="text-xs text-red-600">Colonnes trouvées:</p>
+            <pre className="text-xs mt-1 bg-red-50 p-2 rounded">{headers}</pre>
+          </div>,
+          { duration: 8000 }
+        );
         setCampaign(prev => ({ ...prev, contactsFile: null }));
         e.target.value = '';  // Reset the file input
         return;
       }
-      const rows = text.split('\n').filter(row => row.trim()).length - 1;
+
+      // Find phone_number column index
+      const headerColumns = headers.split(',').map(h => h.trim());
+      const phoneNumberIndex = headerColumns.indexOf('phone_number');
+
+      // Validate phone numbers format
+      const invalidPhoneNumbers = [];
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue; // Skip empty lines
+        
+        const columns = lines[i].split(',');
+        let phoneNumber = columns[phoneNumberIndex]?.trim();
+        
+        if (!phoneNumber) continue; // Skip empty phone numbers
+        
+        // Remove spaces, hyphens, and non-numeric characters except '+'
+        phoneNumber = phoneNumber.replace(/[\s-]/g, '');
+        
+        // Add + prefix if missing for numbers starting with country code
+        if (!phoneNumber.startsWith('+') && (phoneNumber.startsWith('972') || phoneNumber.startsWith('33'))) {
+          phoneNumber = '+' + phoneNumber;
+        }
+        
+        // Check all valid formats:
+        // 1. French format starting with +33 followed by 9 digits
+        // 2. French format starting with 0 followed by 9 digits
+        // 3. Israeli format starting with +972 followed by 9 digits
+        const isValidFormat = (
+          /^\+33\d{9}$/.test(phoneNumber) ||
+          /^0\d{9}$/.test(phoneNumber) ||
+          /^\+972\d{9}$/.test(phoneNumber)
+        );
+        
+        if (!isValidFormat) {
+          invalidPhoneNumbers.push({ line: i + 1, number: columns[phoneNumberIndex]?.trim() });
+          if (invalidPhoneNumbers.length >= 3) break; // Limit the number of examples
+        }
+      }
+
+      if (invalidPhoneNumbers.length > 0) {
+        const examples = invalidPhoneNumbers
+          .map(({ line, number }) => `Ligne ${line}: ${number}`)
+          .join('\n');
+        
+        toast.error(
+          <div className="text-sm">
+            <p className="font-medium mb-1">Format de numéro de téléphone invalide</p>
+            <p className="mb-2">Les formats acceptés sont:</p>
+            <ul className="list-disc pl-4 mb-2 text-xs">
+              <li>Format français: +33612345678 ou 0612345678 ou 33612345678</li>
+            </ul>
+            <p className="text-xs text-red-600">Exemples d'erreurs:</p>
+            <pre className="text-xs mt-1 bg-red-50 p-2 rounded">{examples}</pre>
+          </div>,
+          { duration: 8000 }
+        );
+        setCampaign(prev => ({ ...prev, contactsFile: null }));
+        e.target.value = '';  // Reset the file input
+        return;
+      }
+
+      const rows = lines.filter(row => row.trim()).length - 1;
       setContactsCount(rows);
-      setCampaign(prev => ({ ...prev, contactsFile: file }));  // Set file only after validation
+      setCampaign(prev => ({ ...prev, contactsFile: file }));  // Set file only after all validations pass
     };
     reader.readAsText(file);
   };
