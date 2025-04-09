@@ -244,7 +244,29 @@ export async function createCampaign(formData: FormData): Promise<Campaign> {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => null);
-            throw new Error(errorData?.detail || 'Failed to create campaign');
+            let errorMessage = errorData?.detail || 'Erreur lors de la création de la campagne';
+            
+            // Map specific error messages to user-friendly French messages
+            if (errorMessage.includes('Invalid phone number format')) {
+                errorMessage = 'Format de numéro de téléphone invalide dans le fichier CSV';
+            } else if (errorMessage.includes('Insufficient credits')) {
+                errorMessage = 'Crédits insuffisants pour créer la campagne';
+            } else if (response.status === 404) {
+                errorMessage = 'Numéro de téléphone non trouvé';
+            } else if (response.status === 400) {
+                // Clean up error message by removing status code prefix if present
+                errorMessage = errorMessage.replace(/^400:\s*/, '');
+                
+                if (errorMessage.includes('CSV must contain \'phone_number\' column')) {
+                    errorMessage = 'Le fichier CSV doit contenir une colonne "phone_number"';
+                } else if (errorMessage.includes('phone_number')) {
+                    errorMessage = 'Le fichier CSV doit contenir une colonne "phone_number" valide';
+                } else {
+                    errorMessage = 'Données de campagne invalides: ' + errorMessage;
+                }
+            }
+            
+            throw new Error(errorMessage);
         }
         return response.json();
     } catch (error) {
