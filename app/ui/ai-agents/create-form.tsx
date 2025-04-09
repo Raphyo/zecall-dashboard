@@ -132,8 +132,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     maxCallDuration: initialData?.max_call_duration || 30,
     variables: initialData?.variables || [...builtInVariables],
     labels: initialData?.labels || [],
-    postCallActions: initialData?.post_call_actions || []
-    labels: initialData?.labels || [],
+    postCallActions: initialData?.post_call_actions || [],
     vadStopSecs: initialData?.vad_stop_secs || 0.8
   });
   const [fileError, setFileError] = useState<string | null>(null);
