@@ -1062,104 +1062,11 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                   onChange={(e) => {
                     const newValue = e.target.value;
                     setAgent(prev => ({ ...prev, llmPrompt: newValue }));
-                    
-                    // Check if we should show suggestions
-                    const lastOpenBrace = newValue.lastIndexOf('{');
-                    if (lastOpenBrace !== -1 && lastOpenBrace > newValue.lastIndexOf('}')) {
-                      const searchText = newValue.slice(lastOpenBrace + 1).toLowerCase();
-                      const filteredVariables = agent.variables.filter(v => 
-                        v.name.toLowerCase().includes(searchText)
-                      );
-                      if (filteredVariables.length > 0) {
-                        const cursorPosition = e.target.selectionStart;
-                        const rect = e.target.getBoundingClientRect();
-                        const lineHeight = parseInt(window.getComputedStyle(e.target).lineHeight);
-                        const lines = newValue.slice(0, cursorPosition).split('\n');
-                        const currentLine = lines.length;
-                        
-                        // Show suggestions box at cursor position
-                        const suggestionBox = document.getElementById('variableSuggestions');
-                        if (suggestionBox) {
-                          suggestionBox.style.display = 'block';
-                          suggestionBox.style.top = `${rect.top + (currentLine * lineHeight)}px`;
-                          suggestionBox.style.left = `${rect.left}px`;
-                        }
-                      }
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    const suggestionBox = document.getElementById('variableSuggestions');
-                    if (suggestionBox && suggestionBox.style.display === 'block') {
-                      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        // Handle suggestion navigation
-                        const suggestions = suggestionBox.getElementsByTagName('button');
-                        const currentIndex = Array.from(suggestions).findIndex(el => el.classList.contains('bg-blue-50'));
-                        let nextIndex;
-                        if (e.key === 'ArrowDown') {
-                          nextIndex = currentIndex === suggestions.length - 1 ? 0 : currentIndex + 1;
-                        } else {
-                          nextIndex = currentIndex <= 0 ? suggestions.length - 1 : currentIndex - 1;
-                        }
-                        Array.from(suggestions).forEach((s, i) => {
-                          s.classList.toggle('bg-blue-50', i === nextIndex);
-                        });
-                      } else if (e.key === 'Enter' || e.key === 'Tab') {
-                        e.preventDefault();
-                        const selectedSuggestion = suggestionBox.querySelector('button.bg-blue-50');
-                        if (selectedSuggestion) {
-                          const variableName = selectedSuggestion.getAttribute('data-variable');
-                          if (variableName) {
-                            const currentValue = e.currentTarget.value;
-                            const lastOpenBrace = currentValue.lastIndexOf('{');
-                            const newValue = currentValue.slice(0, lastOpenBrace) + '{' + variableName + '}' + currentValue.slice(e.currentTarget.selectionStart);
-                            setAgent(prev => ({ ...prev, llmPrompt: newValue }));
-                          }
-                        }
-                        suggestionBox.style.display = 'none';
-                      } else if (e.key === 'Escape') {
-                        suggestionBox.style.display = 'none';
-                      }
-                    }
                   }}
                   className="mt-2 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                   placeholder="Entrez votre prompt ici..."
                   required
                 />
-                <div
-                  id="variableSuggestions"
-                  className="absolute z-10 w-64 max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg hidden"
-                >
-                  {agent.variables.map((variable, index) => (
-                    <button
-                      key={index}
-                      data-variable={variable.name}
-                      onClick={() => {
-                        const textarea = document.getElementById('prompt') as HTMLTextAreaElement;
-                        if (textarea) {
-                          const currentValue = textarea.value;
-                          const lastOpenBrace = currentValue.lastIndexOf('{');
-                          const newValue = currentValue.slice(0, lastOpenBrace) + '{' + variable.name + '}' + currentValue.slice(textarea.selectionStart);
-                          setAgent(prev => ({ ...prev, llmPrompt: newValue }));
-                          const suggestionBox = document.getElementById('variableSuggestions');
-                          if (suggestionBox) {
-                            suggestionBox.style.display = 'none';
-                          }
-                        }
-                      }}
-                      className={`w-full text-left px-4 py-2 flex items-center justify-between ${
-                        variable.isBuiltIn 
-                          ? 'hover:bg-blue-50 text-blue-700'
-                          : 'hover:bg-green-50 text-green-700'
-                      } ${index === 0 ? (variable.isBuiltIn ? 'bg-blue-50' : 'bg-green-50') : ''}`}
-                    >
-                      <span className="font-medium">{variable.name}</span>
-                      <span className={`text-xs ${variable.isBuiltIn ? 'text-blue-500' : 'text-green-500'}`}>
-                        {variable.type}
-                      </span>
-                    </button>
-                  ))}
-                </div>
               </div>
               {/* Quick access to variables */}
               <div className="mt-2 flex flex-wrap gap-2">
@@ -2498,27 +2405,70 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                             type="button"
                             onClick={() => {
                               const config = postCallActionConfig as any;
-                              if (config.variables) {
-                                if (!config.variables.includes(variable.name)) {
-                                  setPostCallActionConfig({
-                                    ...config,
-                                    variables: [...config.variables, variable.name]
-                                  });
-                                }
-                              } else {
+                              
+                              // Add variable to the variables array if not already present
+                              if (!config.variables?.includes(variable.name)) {
                                 setPostCallActionConfig({
                                   ...config,
-                                  variables: [variable.name]
+                                  variables: [...(config.variables || []), variable.name]
                                 });
                               }
+
+                              // Insert the variable into the appropriate content field
+                              let contentField = '';
+                              switch (selectedPostCallActionType) {
+                                case 'sms':
+                                  contentField = 'message';
+                                  break;
+                                case 'email':
+                                  contentField = 'body';
+                                  break;
+                                case 'api':
+                                  contentField = 'body';
+                                  break;
+                                case 'notification':
+                                  contentField = 'message';
+                                  break;
+                              }
+
+                              if (contentField && config[contentField] !== undefined) {
+                                const textArea = document.querySelector(`textarea[value="${config[contentField]}"]`) as HTMLTextAreaElement;
+                                if (textArea) {
+                                  const cursorPos = textArea.selectionStart;
+                                  const textBefore = config[contentField].substring(0, cursorPos);
+                                  const textAfter = config[contentField].substring(cursorPos);
+                                  const newValue = textBefore + '{' + variable.name + '}' + textAfter;
+                                  
+                                  setPostCallActionConfig({
+                                    ...config,
+                                    [contentField]: newValue
+                                  });
+
+                                  // Set cursor position after the inserted variable
+                                  setTimeout(() => {
+                                    textArea.focus();
+                                    const newCursorPos = cursorPos + variable.name.length + 2;
+                                    textArea.setSelectionRange(newCursorPos, newCursorPos);
+                                  }, 0);
+                                } else {
+                                  // If textarea not found, just append to the end
+                                  setPostCallActionConfig({
+                                    ...config,
+                                    [contentField]: (config[contentField] || '') + '{' + variable.name + '}'
+                                  });
+                                }
+                              }
                             }}
-                            className={`px-3 py-1 text-sm rounded-full ${
-                              (postCallActionConfig as any)?.variables?.includes(variable.name)
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            className={`inline-flex items-center px-3 py-1 text-sm rounded-full ${
+                              variable.isBuiltIn 
+                                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                : 'bg-green-100 text-green-700 hover:bg-green-200'
                             }`}
                           >
-                            {variable.name}
+                            <span>{variable.name}</span>
+                            <span className={`ml-1 text-xs ${variable.isBuiltIn ? 'text-blue-500' : 'text-green-500'}`}>
+                              ({variable.type})
+                            </span>
                           </button>
                         ))}
                       </div>
