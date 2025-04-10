@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon, InformationCircleIcon, PlusIcon, PhoneIcon, ArrowPathRoundedSquareIcon, Squares2X2Icon, TrashIcon, PencilIcon, TagIcon, XMarkIcon, EnvelopeIcon, BellIcon } from '@heroicons/react/24/outline';
+import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon, InformationCircleIcon, PlusIcon, PhoneIcon, ArrowPathRoundedSquareIcon, Squares2X2Icon, TrashIcon, PencilIcon, TagIcon, XMarkIcon, EnvelopeIcon, BellIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { createAIAgent, createAgentFunction, updateAgentFunction, removeAgentFunction, getAgentFunctions, ORCHESTRATOR_URL, updateAIAgent, getAIAgents } from '@/app/lib/api';
 import { Toast } from '../toast';
@@ -1453,10 +1453,16 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
           {/* Post-Call Actions Section */}
           <div className="p-6 border-t border-gray-100">
             <div className="flex items-center mb-6">
-              <ArrowPathRoundedSquareIcon className="h-6 w-6 text-gray-600 mr-2" />
-              <h2 className="text-lg font-medium">Actions post-appel</h2>
+              <ArrowPathRoundedSquareIcon className="h-6 w-6 text-gray-300 mr-2" />
+              <h2 className="text-lg font-medium text-gray-400">Actions post-appel</h2>
+              <div className="ml-3 flex items-center">
+                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                  <LockClosedIcon className="h-3 w-3 mr-1" />
+                  Bientôt disponible
+                </span>
+              </div>
             </div>
-            <div>
+            <div className="opacity-50">
               <p className="mt-1 text-sm text-gray-500 mb-4">
                 Configurez les actions à exécuter automatiquement après chaque appel (envoi de SMS, email, notifications, etc.).
               </p>
@@ -1464,17 +1470,17 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               {/* Post-Call Actions List */}
               <div className="space-y-3 mb-4">
                 {agent.postCallActions.map((action, index) => (
-                  <div key={index} className="flex flex-col p-3 border rounded-md">
+                  <div key={index} className="flex flex-col p-3 border border-gray-200 rounded-md bg-gray-50">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center">
-                        {action.type === 'sms' && <PhoneIcon className="h-5 w-5 text-gray-500 mr-2" />}
-                        {action.type === 'email' && <EnvelopeIcon className="h-5 w-5 text-gray-500 mr-2" />}
-                        {action.type === 'api' && <CommandLineIcon className="h-5 w-5 text-gray-500 mr-2" />}
-                        {action.type === 'notification' && <BellIcon className="h-5 w-5 text-gray-500 mr-2" />}
+                        {action.type === 'sms' && <PhoneIcon className="h-5 w-5 text-gray-400 mr-2" />}
+                        {action.type === 'email' && <EnvelopeIcon className="h-5 w-5 text-gray-400 mr-2" />}
+                        {action.type === 'api' && <CommandLineIcon className="h-5 w-5 text-gray-400 mr-2" />}
+                        {action.type === 'notification' && <BellIcon className="h-5 w-5 text-gray-400 mr-2" />}
                         <div>
-                          <p className="font-medium text-sm">{action.name}</p>
+                          <p className="font-medium text-sm text-gray-400">{action.name}</p>
                           {action.description && (
-                            <p className="text-sm text-gray-500">{action.description}</p>
+                            <p className="text-sm text-gray-400">{action.description}</p>
                           )}
                         </div>
                       </div>
@@ -1530,13 +1536,15 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               {/* Add Post-Call Action Button */}
               <button
                 type="button"
-                onClick={() => {
-                  setShowPostCallActionModal(true);
-                  setSelectedPostCallActionType(null);
-                  setPostCallActionConfig(null);
-                  setEditingPostCallAction(null);
-                }}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                // onClick={() => {
+                //   setShowPostCallActionModal(true);
+                //   setSelectedPostCallActionType(null);
+                //   setPostCallActionConfig(null);
+                //   setEditingPostCallAction(null);
+                // }}
+                // className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                              disabled
+                className="flex items-center px-4 py-2 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-400 bg-gray-50 cursor-not-allowed"
               >
                 <PlusIcon className="h-5 w-5 mr-2" />
                 Ajouter une action post-appel
