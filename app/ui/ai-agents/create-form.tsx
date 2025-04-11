@@ -1504,7 +1504,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
           {/* Functions Section */}
           <div className="p-6 border-t border-gray-100">
             <div className="flex items-center mb-6">
-              <Squares2X2Icon className="h-6 w-6 text-gray-600 mr-2" />
+              <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
               <h2 className="text-lg font-medium">Fonctions</h2>
             </div>
             <div>
@@ -1601,137 +1601,6 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                 <PlusIcon className="h-5 w-5 mr-2" />
                 Ajouter une fonction
               </button>
-            </div>
-          </div>
-
-          {/* Wake Phrase Detection Section */}
-          <div className="p-6 border-t border-gray-100">
-            <div className="flex items-center mb-6">
-              <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
-              <h2 className="text-lg font-medium">Détection de phrases d'éveil</h2>
-            </div>
-            <div>
-              <p className="mt-1 text-sm text-gray-500 mb-4">
-                Configurez des phrases d'éveil pour que l'agent ne réagisse qu'après avoir détecté certains mots ou phrases spécifiques.
-                Une fois une phrase d'éveil détectée, l'agent restera actif pendant la durée du délai de maintien.
-              </p>
-
-              <div className="space-y-4">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="wakePhraseEnabled"
-                    checked={agent.wakePhraseDetection.enabled}
-                    onChange={(e) => setAgent(prev => ({
-                      ...prev,
-                      wakePhraseDetection: {
-                        ...prev.wakePhraseDetection,
-                        enabled: e.target.checked
-                      }
-                    }))}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="wakePhraseEnabled" className="ml-2 block text-sm text-gray-900">
-                    Activer la détection de phrases d'éveil
-                  </label>
-                </div>
-
-                {agent.wakePhraseDetection.enabled && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Phrases d'éveil
-                      </label>
-                      <div className="mt-2 space-y-2">
-                        {agent.wakePhraseDetection.phrases.map((phrase, index) => (
-                          <div key={index} className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={phrase}
-                              onChange={(e) => {
-                                const newPhrases = [...agent.wakePhraseDetection.phrases];
-                                newPhrases[index] = e.target.value;
-                                setAgent(prev => ({
-                                  ...prev,
-                                  wakePhraseDetection: {
-                                    ...prev.wakePhraseDetection,
-                                    phrases: newPhrases
-                                  }
-                                }));
-                              }}
-                              className="flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const newPhrases = agent.wakePhraseDetection.phrases.filter((_, i) => i !== index);
-                                setAgent(prev => ({
-                                  ...prev,
-                                  wakePhraseDetection: {
-                                    ...prev.wakePhraseDetection,
-                                    phrases: newPhrases
-                                  }
-                                }));
-                              }}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-full"
-                            >
-                              <TrashIcon className="h-5 w-5" />
-                            </button>
-                          </div>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAgent(prev => ({
-                              ...prev,
-                              wakePhraseDetection: {
-                                ...prev.wakePhraseDetection,
-                                phrases: [...prev.wakePhraseDetection.phrases, '']
-                              }
-                            }));
-                          }}
-                          className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                        >
-                          <PlusIcon className="h-5 w-5 mr-2" />
-                          Ajouter une phrase d'éveil
-                        </button>
-                      </div>
-                      <p className="mt-2 text-xs text-gray-500">
-                        Ajoutez une ou plusieurs phrases qui activeront l'agent lorsqu'elles seront prononcées.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label htmlFor="keepaliveTimeout" className="block text-sm font-medium text-gray-700">
-                        Délai de maintien (secondes)
-                      </label>
-                      <input
-                        type="range"
-                        id="keepaliveTimeout"
-                        min="5"
-                        max="120"
-                        value={agent.wakePhraseDetection.keepalive_timeout}
-                        onChange={(e) => setAgent(prev => ({
-                          ...prev,
-                          wakePhraseDetection: {
-                            ...prev.wakePhraseDetection,
-                            keepalive_timeout: Number(e.target.value)
-                          }
-                        }))}
-                        className="mt-2 w-full"
-                      />
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>5s</span>
-                        <span className="font-bold text-sm text-gray-700">{agent.wakePhraseDetection.keepalive_timeout}s</span>
-                        <span>120s</span>
-                      </div>
-                      <p className="mt-2 text-xs text-gray-500">
-                        Durée pendant laquelle l'agent restera actif après la détection d'une phrase d'éveil.
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
             </div>
           </div>
 
