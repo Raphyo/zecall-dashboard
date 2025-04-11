@@ -109,6 +109,11 @@ interface AIAgent {
   labels?: string[];
   vad_stop_secs?: number;
   post_call_actions?: PostCallAction[];
+  wake_phrase_detection?: {
+    enabled: boolean;
+    phrases: string[];
+    keepalive_timeout: number;
+  };
 }
 
 export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; initialData?: AIAgent }) {
@@ -133,7 +138,12 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     variables: initialData?.variables || [...builtInVariables],
     labels: initialData?.labels || [],
     postCallActions: initialData?.post_call_actions || [],
-    vadStopSecs: initialData?.vad_stop_secs || 0.8
+    vadStopSecs: initialData?.vad_stop_secs || 0.8,
+    wakePhraseDetection: initialData?.wake_phrase_detection || {
+      enabled: false,
+      phrases: [],
+      keepalive_timeout: 30
+    }
   });
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
@@ -270,6 +280,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       formData.append('max_call_duration', agent.maxCallDuration.toString());
       formData.append('labels', JSON.stringify(agent.labels));
       formData.append('vad_stop_secs', agent.vadStopSecs.toString());
+      formData.append('wake_phrase_detection', JSON.stringify(agent.wakePhraseDetection));
       console.log('Debug - FormData after appending vad_stop_secs:');
       for (const [key, value] of formData.entries()) {
         console.log(`${key}: ${value}`);
@@ -1139,6 +1150,146 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               <div className="flex items-center group relative">
                 <input
                   type="checkbox"
+                  id="wakePhraseEnabled"
+                  checked={agent.wakePhraseDetection.enabled}
+                  onChange={(e) => setAgent(prev => ({
+                    ...prev,
+                    wakePhraseDetection: {
+                      ...prev.wakePhraseDetection,
+                      enabled: e.target.checked
+                    }
+                  }))}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="wakePhraseEnabled" className="ml-2 block text-sm text-gray-900">
+                  Détection de mots d'éveil
+                </label>
+                <div className="relative inline-block ml-2">
+                  <InformationCircleIcon className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block w-64 bg-gray-900 text-white text-sm rounded-lg p-2 shadow-lg">
+                    <div className="relative">
+                      <div className="text-xs">
+                        L'agent ne réagira qu'après avoir détecté l'un des mots d'éveil spécifiés.
+                        Une fois un mot d'éveil détecté, l'agent restera actif pendant la durée du délai de maintien.
+                      </div>
+                      <div className="absolute w-3 h-3 bg-gray-900 transform rotate-45 left-1/2 -translate-x-1/2 -bottom-1.5"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {agent.wakePhraseDetection.enabled && (
+                <div className="ml-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Mots d'éveil
+                    </label>
+                    <div className="flex gap-2 mb-4">
+                      <input
+                        type="text"
+                        placeholder="Ajouter un mot d'éveil..."
+                        className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const input = e.target as HTMLInputElement;
+                            const word = input.value.trim();
+                            if (word && !agent.wakePhraseDetection.phrases.includes(word)) {
+                              setAgent(prev => ({
+                                ...prev,
+                                wakePhraseDetection: {
+                                  ...prev.wakePhraseDetection,
+                                  phrases: [...prev.wakePhraseDetection.phrases, word]
+                                }
+                              }));
+                            }
+                            input.value = '';
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const input = document.querySelector('input[placeholder="Ajouter un mot d\'éveil..."]') as HTMLInputElement;
+                          const word = input.value.trim();
+                          if (word && !agent.wakePhraseDetection.phrases.includes(word)) {
+                            setAgent(prev => ({
+                              ...prev,
+                              wakePhraseDetection: {
+                                ...prev.wakePhraseDetection,
+                                phrases: [...prev.wakePhraseDetection.phrases, word]
+                              }
+                            }));
+                          }
+                          input.value = '';
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      >
+                        Ajouter
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {agent.wakePhraseDetection.phrases.map((word, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-700"
+                        >
+                          {word}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAgent(prev => ({
+                                ...prev,
+                                wakePhraseDetection: {
+                                  ...prev.wakePhraseDetection,
+                                  phrases: prev.wakePhraseDetection.phrases.filter((_, i) => i !== index)
+                                }
+                              }));
+                            }}
+                            className="p-0.5 hover:bg-blue-200 rounded-full"
+                          >
+                            <XMarkIcon className="h-4 w-4" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="keepaliveTimeout" className="block text-sm font-medium text-gray-700">
+                      Délai de maintien (secondes)
+                    </label>
+                    <input
+                      type="range"
+                      id="keepaliveTimeout"
+                      min="5"
+                      max="1800"
+                      value={agent.wakePhraseDetection.keepalive_timeout}
+                      onChange={(e) => setAgent(prev => ({
+                        ...prev,
+                        wakePhraseDetection: {
+                          ...prev.wakePhraseDetection,
+                          keepalive_timeout: Number(e.target.value)
+                        }
+                      }))}
+                      className="mt-2 w-full"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>5s</span>
+                      <span className="font-bold text-sm text-gray-700">{agent.wakePhraseDetection.keepalive_timeout}s</span>
+                      <span>30min</span>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      Durée pendant laquelle l'agent restera actif après la détection d'un mot d'éveil.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center group relative">
+                <input
+                  type="checkbox"
                   id="silenceDetection"
                   checked={agent.silenceDetection}
                   onChange={(e) => setAgent(prev => ({ ...prev, silenceDetection: e.target.checked }))}
@@ -1202,50 +1353,6 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       <span>5</span>
                     </div>
                   </div>
-
-                  <div className="flex flex-col space-y-2">
-                    <div className="flex items-center group relative">
-                      <label htmlFor="vadStopSecs" className="text-sm text-gray-700">
-                        Délai de pause VAD (Voice Activity Detection)
-                      </label>
-                      <div className="relative inline-block ml-2">
-                        <InformationCircleIcon className="h-5 w-5 text-gray-400 hover:text-gray-500" />
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block w-96 bg-gray-900 text-white text-sm rounded-lg p-4 shadow-lg z-10">
-                          <div className="relative">
-                            <div className="text-xs space-y-2">
-                              <p>Lorsque le VAD détecte que l'utilisateur parle, il commence à capturer l'audio.</p>
-                              <p>En cas de pause de parole, le VAD ne s'arrête pas immédiatement.</p>
-                              <p>Il attend plutôt la durée spécifiée par le délai de pause.</p>
-                              <p>Si la parole reprend pendant ce délai, le VAD continue la capture dans le même segment.</p>
-                              <p>Si le silence persiste pendant toute la durée du délai, le VAD considère le segment de parole comme terminé et arrête la capture.</p>
-                              <p className="font-semibold mt-2">Ce paramètre permet de :</p>
-                              <ul className="list-disc pl-4">
-                                <li>Empêcher le VAD de s'arrêter prématurément lors de brèves pauses dans la parole.</li>
-                                <li>Permettre des pauses naturelles dans la conversation sans fragmenter la parole en plusieurs segments.</li>
-                                <li>Ajuster la sensibilité du VAD aux pauses en fonction du cas d'utilisation ou des habitudes de parole.</li>
-                              </ul>
-                            </div>
-                            <div className="absolute w-3 h-3 bg-gray-900 transform rotate-45 left-1/2 -translate-x-1/2 -bottom-1.5"></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <input
-                      type="range"
-                      id="vadStopSecs"
-                      min="0.1"
-                      max="2.0"
-                      step="0.1"
-                      value={agent.vadStopSecs || 0.8}
-                      onChange={(e) => setAgent(prev => ({ ...prev, vadStopSecs: Number(e.target.value) }))}
-                      className="w-full"
-                    />
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>0.1s</span>
-                      <span className="font-bold text-sm text-gray-700">{agent.vadStopSecs || 0.8}s</span>
-                      <span>2.0s</span>
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -1260,6 +1367,53 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                 <label htmlFor="aiStartsConversation" className="ml-2 block text-sm text-gray-900">
                   L'IA commence la conversation
                 </label>
+              </div>
+
+              {/* VAD Section - Moved outside of silence detection */}
+              <div className="mt-6">
+                <div className="flex flex-col space-y-2">
+                  <div className="flex items-center group relative">
+                    <label htmlFor="vadStopSecs" className="text-sm text-gray-700">
+                      Délai de pause VAD (Voice Activity Detection)
+                    </label>
+                    <div className="relative inline-block ml-2">
+                      <InformationCircleIcon className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block w-96 bg-gray-900 text-white text-sm rounded-lg p-4 shadow-lg z-10">
+                        <div className="relative">
+                          <div className="text-xs space-y-2">
+                            <p>Lorsque le VAD détecte que l'utilisateur parle, il commence à capturer l'audio.</p>
+                            <p>En cas de pause de parole, le VAD ne s'arrête pas immédiatement.</p>
+                            <p>Il attend plutôt la durée spécifiée par le délai de pause.</p>
+                            <p>Si la parole reprend pendant ce délai, le VAD continue la capture dans le même segment.</p>
+                            <p>Si le silence persiste pendant toute la durée du délai, le VAD considère le segment de parole comme terminé et arrête la capture.</p>
+                            <p className="font-semibold mt-2">Ce paramètre permet de :</p>
+                            <ul className="list-disc pl-4">
+                              <li>Empêcher le VAD de s'arrêter prématurément lors de brèves pauses dans la parole.</li>
+                              <li>Permettre des pauses naturelles dans la conversation sans fragmenter la parole en plusieurs segments.</li>
+                              <li>Ajuster la sensibilité du VAD aux pauses en fonction du cas d'utilisation ou des habitudes de parole.</li>
+                            </ul>
+                          </div>
+                          <div className="absolute w-3 h-3 bg-gray-900 transform rotate-45 left-1/2 -translate-x-1/2 -bottom-1.5"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    id="vadStopSecs"
+                    min="0.1"
+                    max="2.0"
+                    step="0.1"
+                    value={agent.vadStopSecs || 0.8}
+                    onChange={(e) => setAgent(prev => ({ ...prev, vadStopSecs: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>0.1s</span>
+                    <span className="font-bold text-sm text-gray-700">{agent.vadStopSecs || 0.8}s</span>
+                    <span>2.0s</span>
+                  </div>
+                </div>
               </div>
 
               {/* Max Call Duration Control */}
@@ -1447,6 +1601,137 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                 <PlusIcon className="h-5 w-5 mr-2" />
                 Ajouter une fonction
               </button>
+            </div>
+          </div>
+
+          {/* Wake Phrase Detection Section */}
+          <div className="p-6 border-t border-gray-100">
+            <div className="flex items-center mb-6">
+              <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
+              <h2 className="text-lg font-medium">Détection de phrases d'éveil</h2>
+            </div>
+            <div>
+              <p className="mt-1 text-sm text-gray-500 mb-4">
+                Configurez des phrases d'éveil pour que l'agent ne réagisse qu'après avoir détecté certains mots ou phrases spécifiques.
+                Une fois une phrase d'éveil détectée, l'agent restera actif pendant la durée du délai de maintien.
+              </p>
+
+              <div className="space-y-4">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="wakePhraseEnabled"
+                    checked={agent.wakePhraseDetection.enabled}
+                    onChange={(e) => setAgent(prev => ({
+                      ...prev,
+                      wakePhraseDetection: {
+                        ...prev.wakePhraseDetection,
+                        enabled: e.target.checked
+                      }
+                    }))}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="wakePhraseEnabled" className="ml-2 block text-sm text-gray-900">
+                    Activer la détection de phrases d'éveil
+                  </label>
+                </div>
+
+                {agent.wakePhraseDetection.enabled && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Phrases d'éveil
+                      </label>
+                      <div className="mt-2 space-y-2">
+                        {agent.wakePhraseDetection.phrases.map((phrase, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={phrase}
+                              onChange={(e) => {
+                                const newPhrases = [...agent.wakePhraseDetection.phrases];
+                                newPhrases[index] = e.target.value;
+                                setAgent(prev => ({
+                                  ...prev,
+                                  wakePhraseDetection: {
+                                    ...prev.wakePhraseDetection,
+                                    phrases: newPhrases
+                                  }
+                                }));
+                              }}
+                              className="flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newPhrases = agent.wakePhraseDetection.phrases.filter((_, i) => i !== index);
+                                setAgent(prev => ({
+                                  ...prev,
+                                  wakePhraseDetection: {
+                                    ...prev.wakePhraseDetection,
+                                    phrases: newPhrases
+                                  }
+                                }));
+                              }}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-full"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAgent(prev => ({
+                              ...prev,
+                              wakePhraseDetection: {
+                                ...prev.wakePhraseDetection,
+                                phrases: [...prev.wakePhraseDetection.phrases, '']
+                              }
+                            }));
+                          }}
+                          className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                        >
+                          <PlusIcon className="h-5 w-5 mr-2" />
+                          Ajouter une phrase d'éveil
+                        </button>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">
+                        Ajoutez une ou plusieurs phrases qui activeront l'agent lorsqu'elles seront prononcées.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label htmlFor="keepaliveTimeout" className="block text-sm font-medium text-gray-700">
+                        Délai de maintien (secondes)
+                      </label>
+                      <input
+                        type="range"
+                        id="keepaliveTimeout"
+                        min="5"
+                        max="120"
+                        value={agent.wakePhraseDetection.keepalive_timeout}
+                        onChange={(e) => setAgent(prev => ({
+                          ...prev,
+                          wakePhraseDetection: {
+                            ...prev.wakePhraseDetection,
+                            keepalive_timeout: Number(e.target.value)
+                          }
+                        }))}
+                        className="mt-2 w-full"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>5s</span>
+                        <span className="font-bold text-sm text-gray-700">{agent.wakePhraseDetection.keepalive_timeout}s</span>
+                        <span>120s</span>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">
+                        Durée pendant laquelle l'agent restera actif après la détection d'une phrase d'éveil.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
