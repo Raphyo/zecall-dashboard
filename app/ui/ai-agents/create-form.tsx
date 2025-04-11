@@ -371,7 +371,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       // Send webhook to update configuration
       try {
         const webhookResponse = await fetch(
-          `${ORCHESTRATOR_URL}/webhook/config-update?agent_id=${encodeURIComponent(savedAgent.id)}`,
+          `${ORCHESTRATOR_URL}/webhook/config-update?agent_id=${encodeURIComponent(savedAgent.id)}&user_id=${encodeURIComponent(session.user.id)}`,
           {
             method: 'POST',
             headers: {
