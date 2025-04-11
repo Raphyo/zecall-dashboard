@@ -103,12 +103,20 @@ export default function LoginForm() {
             </div>
 
             <div>
-              <label
-                className="block text-sm font-medium text-gray-700 mb-1.5"
-                htmlFor="password"
-              >
-                Mot de passe
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  className="block text-sm font-medium text-gray-700"
+                  htmlFor="password"
+                >
+                  Mot de passe
+                </label>
+                <Link
+                  href="/reset-password"
+                  className="text-sm font-medium text-purple-600 hover:text-purple-500 hover:underline transition-all duration-200"
+                >
+                  Mot de passe oublié ?
+                </Link>
+              </div>
               <div className="relative group">
                 <input
                   className="block w-full px-4 py-3 rounded-xl border-2 border-gray-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-purple-500 focus:ring-purple-500 transition-all duration-200"
