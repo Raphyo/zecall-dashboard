@@ -151,7 +151,9 @@ export default function SubscriptionPackagesModal({ isOpen, onClose }: Props) {
   const calculatePrice = (basePrice: number | string) => {
     if (typeof basePrice === 'number') {
       const monthlyPrice = isAnnual ? basePrice * (1 - annualDiscount) : basePrice
-      return monthlyPrice.toFixed(2)
+      const formattedPrice = monthlyPrice.toFixed(2)
+      // Remove decimals if they're .00
+      return formattedPrice.endsWith('.00') ? formattedPrice.slice(0, -3) : formattedPrice
     }
     return basePrice
   }
@@ -237,11 +239,9 @@ export default function SubscriptionPackagesModal({ isOpen, onClose }: Props) {
                       return (
                         <div
                           key={pkg.name}
-                          className={`rounded-lg p-6 flex flex-col h-full ${
-                            pkg.name === 'professional' 
-                              ? 'bg-pink-50 ring-2 ring-pink-500'
-                              : 'bg-white ring-1 ring-gray-200'
-                          } ${isCurrentPlan ? 'opacity-50' : ''}`}
+                          className={`rounded-lg p-6 flex flex-col h-full bg-white ring-1 ring-gray-200 ${
+                            isCurrentPlan ? 'opacity-50' : ''
+                          }`}
                         >
                           <div className="flex-grow">
                             <div className="flex justify-between items-start">
@@ -262,7 +262,7 @@ export default function SubscriptionPackagesModal({ isOpen, onClose }: Props) {
                             </p>
                             {typeof pkg.price === 'number' && isAnnual && (
                               <p className="mt-1 text-sm text-gray-500">
-                                {`Facturé ${(Number(calculatePrice(pkg.price)) * 12).toFixed(2)}€ par an`}
+                                {`Facturé ${(Number(calculatePrice(pkg.price)) * 12).toFixed(0)}€ par an`}
                               </p>
                             )}
                             <p className="mt-3 text-sm text-gray-500">{pkg.description}</p>
