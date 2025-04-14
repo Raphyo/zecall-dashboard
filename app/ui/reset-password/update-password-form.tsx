@@ -2,8 +2,7 @@
 
 import { KeyIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/app/ui/button';
-import { useFormStatus } from 'react-dom';
-import { useActionState } from 'react';
+import { useFormStatus, useFormState } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { updatePassword } from '@/app/lib/reset-password-actions';
 
@@ -34,7 +33,7 @@ export default function UpdatePasswordForm({
   userId: number;
 }) {
   const router = useRouter();
-  const [state, formAction] = useActionState(updatePassword, { message: '', success: false });
+  const [state, formAction] = useFormState(updatePassword, { message: '', success: false });
 
   if (state?.success) {
     router.push('/login?success=password_updated');

@@ -173,7 +173,7 @@ export async function updatePassword(
 ): Promise<ResetPasswordState> {
   try {
     const token = formData.get('token') as string;
-    const userId = parseInt(formData.get('userId') as string);
+    const userId = formData.get('userId') as string; // UUID is a string
     const password = formData.get('password') as string;
     const confirmPassword = formData.get('confirmPassword') as string;
 
@@ -185,7 +185,7 @@ export async function updatePassword(
       SELECT id
       FROM password_reset_tokens
       WHERE token = ${token}
-        AND user_id = ${userId}
+        AND user_id = ${userId}::uuid
         AND used_at IS NULL
         AND expires_at > NOW()
     `;
@@ -204,7 +204,7 @@ export async function updatePassword(
     await sql`
       UPDATE users
       SET password = ${hashedPassword}
-      WHERE id = ${userId}
+      WHERE id = ${userId}::uuid
     `;
 
     // Mark token as used

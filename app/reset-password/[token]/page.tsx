@@ -2,16 +2,20 @@ import { sql } from '@vercel/postgres';
 import { redirect } from 'next/navigation';
 import UpdatePasswordForm from '@/app/ui/reset-password/update-password-form';
 
+interface Props {
+  params: Promise<{
+    token: string;
+  }>;
+}
+
 export default async function ResetPasswordPage({
-  params
-}: {
-  params: { token: string }
-}) {
+  params,
+}: Props) {
   // Check if token exists and is valid
   const result = await sql`
-    SELECT user_id, expires_at, used_at
+    SELECT user_id::text, expires_at, used_at
     FROM password_reset_tokens
-    WHERE token = ${params.token}
+    WHERE token = ${(await params).token}
   `;
 
   if (result.rows.length === 0) {
@@ -28,5 +32,5 @@ export default async function ResetPasswordPage({
     redirect('/login?error=token_expired');
   }
 
-  return <UpdatePasswordForm token={params.token} userId={token.user_id} />;
+  return <UpdatePasswordForm token={(await params).token} userId={token.user_id} />;
 } 
