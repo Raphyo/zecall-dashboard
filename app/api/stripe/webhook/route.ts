@@ -8,6 +8,23 @@ const stripeKey = process.env.STRIPE_RESTRICTED_KEY!;
 const isTestMode = stripeKey.startsWith('rk_test_');
 console.log('🔑 Stripe webhook mode:', isTestMode ? 'test' : 'live');
 
+// Define valid subscription plans
+const VALID_SUBSCRIPTION_PLANS = ['essential', 'professional', 'premium', 'custom'] as const;
+type SubscriptionPlan = typeof VALID_SUBSCRIPTION_PLANS[number];
+
+// Helper function to validate and normalize package names
+function normalizePackageName(packageName: string): SubscriptionPlan {
+  const normalized = packageName.toLowerCase();
+  
+  if (!VALID_SUBSCRIPTION_PLANS.includes(normalized as SubscriptionPlan)) {
+    console.error('❌ Invalid package name:', packageName);
+    console.error('Valid packages are:', VALID_SUBSCRIPTION_PLANS);
+    throw new Error(`Invalid package name: ${packageName}`);
+  }
+
+  return normalized as SubscriptionPlan;
+}
+
 const stripe = new Stripe(stripeKey, {
   apiVersion: '2025-01-27.acacia' as any,
   typescript: true,
@@ -19,13 +36,77 @@ const stripe = new Stripe(stripeKey, {
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
+async function updateUserCredits(userId: string, amountInCents: number, subscriptionId: string) {
+  try {
+    const amountInEuros = amountInCents / 100;
+    const formData = new FormData();
+    formData.append('user_id', userId);
+    formData.append('amount', amountInEuros.toString());
+    formData.append('stripe_payment_id', subscriptionId);
+
+    const response = await fetch(`${ANALYTICS_URL}/api/credits/add`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to update credits');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Failed to add credits:', error);
+    throw error;
+  }
+}
+
+async function updateUserSubscription(userId: string, packageName: string) {
+  try {
+    console.log('🔵 Updating subscription for user:', userId);
+    console.log('🔵 Original package name:', packageName);
+
+    const subscriptionPlan = normalizePackageName(packageName);
+    console.log('🔵 Normalized subscription plan:', subscriptionPlan);
+
+    const payload = {
+      subscription_plan: subscriptionPlan,
+      subscription_started_at: new Date().toISOString(),
+      subscription_renewed_at: new Date().toISOString(),
+      subscription_status: 'active',
+      subscription_auto_renew: true
+    };
+
+    console.log('🔵 Sending subscription update payload:', payload);
+
+    const response = await fetch(`${ANALYTICS_URL}/api/users/${userId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const responseData = await response.json();
+    console.log('🔵 Subscription update response:', { status: response.status, data: responseData });
+
+    if (!response.ok) {
+      throw new Error(responseData.detail || 'Failed to update user subscription');
+    }
+
+    return responseData;
+  } catch (error) {
+    console.error('Failed to update user subscription:', error);
+    throw error;
+  }
+}
+
 export async function POST(request: Request) {
   const body = await request.text();
   const headersList = await headers();
   const signature = headersList.get('stripe-signature');
 
   if (!signature) {
-    console.error('❌ No Stripe signature found in webhook request');
     return NextResponse.json(
       { error: 'No signature found' },
       { status: 400 }
@@ -36,10 +117,7 @@ export async function POST(request: Request) {
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-    console.log('✅ Webhook signature verified');
   } catch (err) {
-    const error = err as Error;
-    console.error('❌ Webhook signature verification failed:', error.message);
     return NextResponse.json(
       { error: 'Webhook signature verification failed' },
       { status: 400 }
@@ -48,67 +126,141 @@ export async function POST(request: Request) {
 
   try {
     switch (event.type) {
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice;
+        const amountPaid = invoice.amount_paid;
+        const subscriptionId = invoice.subscription as string;
+        
+        // Get customer to find user ID
+        const customer = await stripe.customers.retrieve(invoice.customer as string);
+        
+        let userId = null;
+        if ('metadata' in customer && !customer.deleted) {
+          userId = customer.metadata?.user_id;
+        }
+
+        // If no userId in customer, try subscription
+        if (!userId && subscriptionId) {
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          userId = subscription.metadata?.user_id;
+          
+          // If found in subscription but not in customer, update customer
+          if (userId && 'metadata' in customer && !customer.deleted && !customer.metadata?.user_id) {
+            await stripe.customers.update(invoice.customer as string, {
+              metadata: {
+                ...customer.metadata,
+                user_id: userId
+              }
+            });
+          }
+        }
+
+        if (!userId || typeof amountPaid !== 'number') {
+          throw new Error('Missing user ID or amount in invoice');
+        }
+
+        // Add subscription credits
+        await updateUserCredits(userId, amountPaid, subscriptionId);
+
+        // Only update subscription renewal date if this is not the first invoice (subscription creation)
+        if (subscriptionId) {
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          console.log('🔵 Retrieved subscription:', {
+            id: subscription.id,
+            items: subscription.items.data,
+            metadata: subscription.metadata
+          });
+
+          // Check if this is a renewal (not the first payment)
+          const isRenewal = subscription.current_period_start > subscription.start_date;
+          
+          if (isRenewal) {
+            console.log('🔵 Processing subscription renewal');
+            // Get the package name from metadata (more reliable than price nickname)
+            const packageName = subscription.metadata?.package || 'unknown';
+            console.log('🔵 Package name from metadata:', packageName);
+            
+            const subscriptionPlan = normalizePackageName(packageName);
+            console.log('🔵 Normalized subscription plan:', subscriptionPlan);
+            
+            const payload = {
+              subscription_plan: subscriptionPlan,
+              subscription_started_at: new Date(subscription.start_date * 1000).toISOString(),
+              subscription_renewed_at: new Date().toISOString(),
+              subscription_status: 'active',
+              subscription_auto_renew: true
+            };
+            
+            console.log('🔵 Sending renewal update payload:', payload);
+            
+            const response = await fetch(`${ANALYTICS_URL}/api/users/${userId}`, {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(payload)
+            });
+
+            const responseData = await response.json();
+            console.log('🔵 Renewal update response:', { status: response.status, data: responseData });
+
+            if (!response.ok) {
+              console.error('Failed to update subscription renewal:', responseData);
+            }
+          } else {
+            console.log('🔵 Skipping renewal update - this is the initial subscription payment');
+          }
+        }
+        
+        return NextResponse.json({ 
+          message: 'Subscription payment processed successfully'
+        });
+      }
+
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        console.log('💰 Processing checkout session');
-        
-        // Extract amount and user ID from metadata
-        const amount = Number(session.metadata?.amount || 0);
-        const userId = session.metadata?.userId;
-        const paymentIntentId = typeof session.payment_intent === 'string' ? 
-          session.payment_intent : 
-          session.payment_intent?.id;
 
-        // Validate all required data
+        // Only handle subscription checkouts
+        if (session.mode !== 'subscription' || !session.subscription) {
+          return NextResponse.json({ message: 'Non-subscription checkout completed' });
+        }
+
+        // Get customer to ensure we have the user ID
+        const customer = await stripe.customers.retrieve(session.customer as string);
+        if (!('metadata' in customer) || customer.deleted) {
+          return NextResponse.json({ error: 'Invalid customer' }, { status: 400 });
+        }
+
+        const userId = customer.metadata?.user_id;
         if (!userId) {
-          throw new Error('No user ID found in session metadata');
-        }
-        if (!amount || amount <= 0) {
-          throw new Error('Invalid amount in session metadata');
-        }
-        if (!paymentIntentId) {
-          throw new Error('No payment intent ID found in session');
+          return NextResponse.json({ error: 'No userId found' }, { status: 400 });
         }
 
-        // Validate backend URL
-        if (!ANALYTICS_URL) {
-          throw new Error('ANALYTICS_URL is not configured');
-        }
-
-        console.log('✅ Adding funds:', {
-          userId,
-          amount,
-          paymentIntent: paymentIntentId,
-        });
+        // Get subscription to update its metadata
+        const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
         
-        // Make request to backend API
-        const formData = new FormData();
-        formData.append('user_id', userId);
-        formData.append('amount', amount.toString());
-        formData.append('stripe_payment_id', paymentIntentId);
+        const metadata = {
+          user_id: userId,
+          package: session.metadata?.package || subscription.items.data[0]?.price?.nickname || 'unknown',
+          billing_period: session.metadata?.billing_period || session.metadata?.billingPeriod || 'unknown'
+        };
 
-        const response = await fetch(`${ANALYTICS_URL}/api/credits/add`, {
-          method: 'POST',
-          body: formData
-        });
+        // Update subscription and customer with complete metadata
+        await Promise.all([
+          stripe.subscriptions.update(session.subscription as string, { metadata }),
+          stripe.customers.update(session.customer as string, { metadata }),
+          // Update user subscription in backend
+          updateUserSubscription(userId, metadata.package)
+        ]);
 
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.detail || 'Failed to add funds');
-        }
-
-        const result = await response.json();
-        console.log('✅ Credits added');
-        break;
+        return NextResponse.json({ message: 'Subscription metadata updated' });
       }
+
       default: {
-        console.log('⏩ Unhandled event type:', event.type);
+        return NextResponse.json({ message: 'Unhandled event type' });
       }
     }
-
-    return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('❌ Webhook handler error - please check logs');
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Webhook handler failed' },
       { status: 500 }
