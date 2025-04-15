@@ -5,6 +5,7 @@ import { inter } from '@/app/ui/fonts';
 import { Providers } from './providers';
 import { Analytics } from "@vercel/analytics/react"
 import { SessionProvider } from 'next-auth/react';
+import { SubscriptionProvider } from '@/app/contexts/SubscriptionContext'
 
 export const metadata = {
   title: 'zecall.ai',
@@ -28,7 +29,9 @@ export default function RootLayout({
       <body className={`${inter.className} antialiased overscroll-x-auto`}>
         <Providers>
           <SessionProvider>
-            {children}
+            <SubscriptionProvider>
+              {children}
+            </SubscriptionProvider>
           </SessionProvider>
           <Analytics />
         </Providers>

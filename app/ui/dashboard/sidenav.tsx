@@ -7,13 +7,13 @@ import { useSession } from 'next-auth/react';
 import ProfileMenu from '@/app/components/ProfileMenu';
 import { useState, useEffect } from 'react';
 import { CurrencyEuroIcon } from '@heroicons/react/24/outline';
-import { toast } from 'react-hot-toast';
+import SubscriptionPackagesModal from '@/app/components/SubscriptionPackagesModal';
+import { ClockIcon } from '@heroicons/react/24/outline';
 
 export default function SideNav() {
   const { data: session } = useSession();
-  const [credits, setCredits] = useState(0);
-  const [isLoadingCheckout, setIsLoadingCheckout] = useState(false);
-  const [rechargeAmount, setRechargeAmount] = useState<string>('15');
+  const [credits, setCredits] = useState({ balance: 0, minutes: 0 });
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
 
   // Add polling interval for credit updates
   useEffect(() => {
@@ -51,59 +51,14 @@ export default function SideNav() {
         throw new Error(data.error || 'Failed to fetch credits');
       }
 
-      setCredits(data.credits);
+      console.log('Credits response:', data);
+      setCredits({
+        balance: data.credits.balance,
+        minutes: data.credits.minutes_balance
+      });
     } catch (error) {
       console.error('Error fetching credits:', error);
     }
-  };
-
-  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    // Allow empty input or valid numbers
-    if (value === '' || /^\d+$/.test(value)) {
-      setRechargeAmount(value);
-    }
-  };
-
-  const handleBuyCredits = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    toast.error('Vous n\'avez pas accès à ce service', {
-      duration: 3000,
-      position: 'top-center',
-    });
-    // Commented out payment logic for later use
-    /*
-    const amount = Number(rechargeAmount);
-    if (amount < 15) {
-      toast.error('Le montant minimum est de 15€');
-      return;
-    }
-
-    try {
-      setIsLoadingCheckout(true);
-      const response = await fetch('/api/stripe/checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ amount }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Something went wrong');
-      }
-
-      // Redirect to Stripe Checkout
-      window.location.href = data.url;
-    } catch (error) {
-      console.error('Error redirecting to checkout:', error);
-      toast.error('Unable to process purchase. Please try again later.');
-    } finally {
-      setIsLoadingCheckout(false);
-    }
-    */
   };
 
   return (
@@ -120,59 +75,24 @@ export default function SideNav() {
         <NavLinks />
         <div className="hidden h-auto w-full grow rounded-md bg-gray-50 md:block"></div>
         <div className="hidden md:flex flex-col space-y-4 px-3 py-2">
-          {/* Credits and Recharge Button */}
-          <div className="flex flex-col space-y-4">
+          {/* Credits and Subscribe Button */}
+          <div className="flex flex-col space-y-2">
             <div className="flex items-center bg-blue-50 px-4 py-2 rounded-md border border-blue-100">
               <CurrencyEuroIcon className="h-5 w-5 text-blue-600 mr-2" />
-              <span className="text-sm font-medium text-blue-900">{credits.toFixed(2)}€</span>
+              <span className="text-sm font-medium text-blue-900">{credits.balance.toFixed(2)}€</span>
             </div>
-            <div className="relative rounded-lg p-[2px] bg-gradient-to-r from-blue-600 to-blue-500 shadow-sm">
-              <div className="bg-white rounded-[6px] p-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Acheter des crédits</h3>
-                <div className="relative mb-4">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">€</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="\d*"
-                      min="15"
-                      value={rechargeAmount}
-                      onChange={handleAmountChange}
-                      className="w-full pl-8 pr-4 py-2 border border-gray-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="Montant"
-                    />
-                  </div>
-                  <p className="mt-2 text-sm text-gray-500">Minimum 15€</p>
-                </div>
-                <button
-                  onClick={handleBuyCredits}
-                  className="group relative w-full py-2 px-4 bg-gradient-to-r from-gray-500 via-gray-600 to-gray-700 text-white font-medium rounded-lg shadow-sm transition-opacity duration-200 cursor-not-allowed opacity-50"
-                >
-                  <span>Payer</span>
-                  <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 px-3 py-2 bg-black text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-                    Vous n'avez pas accès à ce service
-                    <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1/2 rotate-45 w-2 h-2 bg-black"></div>
-                  </div>
-                </button>
-                {/* Commented out loading state for later use
-                  disabled={isLoadingCheckout || !rechargeAmount || Number(rechargeAmount) < 15}
-                  className="w-full py-2 px-4 bg-gradient-to-r from-blue-600 via-blue-500 to-purple-600 text-white font-medium rounded-lg shadow-sm transition-opacity duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90"
-                >
-                  {isLoadingCheckout ? (
-                    <div className="flex items-center justify-center">
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      Chargement...
-                    </div>
-                  ) : (
-                    'Payer'
-                  )}
-                */}
-              </div>
+            <div className="flex items-center bg-purple-50 px-4 py-2 rounded-md border border-purple-100">
+              <ClockIcon className="h-5 w-5 text-purple-600 mr-2" />
+              <span className="text-sm font-medium text-purple-900">{credits.minutes} minutes</span>
             </div>
+            <button
+              // Temporarily disabled - TODO: Re-enable when ready
+              disabled={true}
+              onClick={() => setIsSubscriptionModalOpen(true)}
+              className="w-full py-2 px-4 bg-gradient-to-r from-blue-600 via-blue-500 to-purple-600 text-white font-medium rounded-lg shadow-sm transition-opacity duration-200 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Acheter des crédits
+            </button>
           </div>
           {/* Profile Menu */}
           {session?.user?.email && (
@@ -180,6 +100,10 @@ export default function SideNav() {
           )}
         </div>
       </div>
+      <SubscriptionPackagesModal
+        isOpen={isSubscriptionModalOpen}
+        onClose={() => setIsSubscriptionModalOpen(false)}
+      />
     </div>
   );
 }
