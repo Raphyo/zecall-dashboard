@@ -3,13 +3,14 @@
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { deleteCall, getCalls, updateCampaignStatus } from '@/app/lib/api';
-import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon, TrashIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import type { Call } from '@/app/ui/calls/types';
 import { TranscriptModal } from '@/app/ui/modals/transcript-modal';
 import { Filters, FilterState } from '@/app/ui/calls/filters';
 import { useSession } from 'next-auth/react';
 import { exportCallsToCSV, calculateCallCost } from '@/app/lib/utils';
-import { Toast } from '@/app/ui/toast';
+import { toast } from 'sonner';
+import ConfirmDialog from '@/app/components/ConfirmDialog';
 
 function CallHistoryContent() {
   const [calls, setCalls] = useState<Call[]>([]);
@@ -17,7 +18,6 @@ function CallHistoryContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingCalls, setIsDeletingCalls] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [selectedCalls, setSelectedCalls] = useState<string[]>([]);
   const [currentFilters, setCurrentFilters] = useState<FilterState>({
     callerNumber: '',
@@ -31,20 +31,22 @@ function CallHistoryContent() {
   const searchParams = useSearchParams();
   const campaignId = searchParams.get('campaign');
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
-  const [selectedTranscript, setSelectedTranscript] = useState({ transcript: '', summary: '' });
+  const [selectedTranscript, setSelectedTranscript] = useState<{ transcript: string; summary: string }>({ transcript: '', summary: '' });
   const [currentAudioInfo, setCurrentAudioInfo] = useState({ name: '', duration: 0, url: '' });
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { data: session } = useSession();
-  const [expandedText, setExpandedText] = useState<{ 
-    text: string; 
-    position: { x: number; y: number }; 
-    colorClass?: string 
+  const [expandedText, setExpandedText] = useState<{
+    text: string;
+    position: { x: number; y: number };
+    colorClass?: string;
   } | null>(null);
   const REFRESH_INTERVAL = 30000; // Refresh every 30 seconds
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedCallIds, setSelectedCallIds] = useState<string[]>([]);
 
   // Add a ref to track if we're on a touch device
   const isTouchDevice = useRef(false);
@@ -116,10 +118,7 @@ function CallHistoryContent() {
       }
     } catch (error) {
       console.error('Error loading call data:', error);
-      setToast({
-        message: 'Failed to refresh call data. Please try again.',
-        type: 'error'
-      });
+      toast.error('Failed to refresh call data. Please try again.');
     } finally {
       if (!isRefresh) {
         setIsLoading(false);
@@ -333,35 +332,23 @@ function CallHistoryContent() {
     return directionStyles[direction] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20';
   };
 
-  const handleDelete = async (ids: string[]) => {
-    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${ids.length > 1 ? 'ces appels' : 'cet appel'} ?`)) return;
-    setIsDeletingCalls(true);
+  const handleDeleteCalls = async (callIds: string[]) => {
+    if (!session?.user?.id) {
+      toast.error('Session utilisateur non trouvée');
+      return;
+    }
     try {
-      if (!session?.user?.id) {
-        throw new Error('User ID not found');
-      }
-      await deleteCall(ids, session.user.id);
-      
-      // Update both calls and filteredCalls states by removing the deleted calls
-      const updatedCalls = calls.filter(call => !ids.includes(call.id));
-      const updatedFilteredCalls = filteredCalls.filter(call => !ids.includes(call.id));
-      
-      setCalls(updatedCalls);
-      setFilteredCalls(updatedFilteredCalls);
-      setSelectedCalls([]);
-      
-      setToast({
-        message: ids.length > 1 ? 'Appels supprimés avec succès' : 'Appel supprimé avec succès',
-        type: 'success'
-      });
-    } catch (err) {
-      console.error('Error deleting calls - please check server logs');
-      setToast({
-        message: 'Erreur lors de la suppression des appels',
-        type: 'error'
-      });
+      setIsDeletingCalls(true);
+      await deleteCall(callIds, session.user.id);
+      await loadCalls();
+      toast.success('Appel(s) supprimé(s) avec succès');
+    } catch (error) {
+      console.error('Error deleting calls:', error);
+      toast.error('Une erreur est survenue lors de la suppression des appels');
     } finally {
       setIsDeletingCalls(false);
+      setShowDeleteDialog(false);
+      setSelectedCallIds([]);
     }
   };
 
@@ -473,11 +460,18 @@ function CallHistoryContent() {
           </button>
           {selectedCalls.length > 0 && (
             <button
-              onClick={() => handleDelete(selectedCalls)}
+              onClick={() => {
+                setSelectedCallIds(selectedCalls);
+                setShowDeleteDialog(true);
+              }}
               disabled={isDeletingCalls}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-md hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <TrashIcon className="w-5 h-5" />
+              {isDeletingCalls ? (
+                <ArrowPathIcon className="h-4 w-4 animate-spin" />
+              ) : (
+                <TrashIcon className="h-4 w-4" />
+              )}
               Supprimer ({selectedCalls.length})
             </button>
           )}
@@ -700,12 +694,14 @@ function CallHistoryContent() {
                       </td>
                       <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
                         <button
-                          onClick={() => handleDelete([call.id])}
+                          onClick={() => {
+                            setSelectedCallIds([call.id]);
+                            setShowDeleteDialog(true);
+                          }}
                           disabled={isDeletingCalls}
                           className="p-1 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors"
-                          title="Supprimer l'appel"
                         >
-                          <TrashIcon className="h-5 w-5" />
+                          <TrashIcon className="h-4 w-4" />
                         </button>
                       </td>
                     </tr>
@@ -793,34 +789,19 @@ function CallHistoryContent() {
         summary={selectedTranscript.summary}
       />
       
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
-
-      {/* Expanded Text Popup */}
-      {expandedText && (
-        <div 
-          className={`expanded-text-popup fixed z-50 rounded-lg shadow-lg border border-gray-200 p-3 max-w-xs ${expandedText.colorClass || 'bg-white'} sm:max-w-xs max-w-[calc(100vw-40px)]`}
-          style={{ 
-            left: `${expandedText.position.x}px`, 
-            top: `${expandedText.position.y + 10}px` 
-          }}
-        >
-          <div className="flex justify-between items-start">
-            <p className="text-sm break-words pr-6">{expandedText.text}</p>
-            <button 
-              onClick={() => setExpandedText(null)}
-              className="absolute top-2 right-2 text-current opacity-70 hover:opacity-100 p-1"
-            >
-              <XMarkIcon className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false);
+          setSelectedCallIds([]);
+        }}
+        onConfirm={() => handleDeleteCalls(selectedCallIds)}
+        title={`Supprimer ${selectedCallIds.length > 1 ? 'les appels' : 'l\'appel'}`}
+        message={`Êtes-vous sûr de vouloir supprimer ${selectedCallIds.length > 1 ? 'ces appels' : 'cet appel'} ?`}
+        confirmLabel="Supprimer"
+        isLoading={isDeletingCalls}
+        isDanger
+      />
     </div>
   );
 }
