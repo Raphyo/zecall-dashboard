@@ -86,8 +86,6 @@ export default function SideNav() {
               <span className="text-sm font-medium text-purple-900">{credits.minutes} minutes</span>
             </div>
             <button
-              // Temporarily disabled - TODO: Re-enable when ready
-              disabled={true}
               onClick={() => setIsSubscriptionModalOpen(true)}
               className="w-full py-2 px-4 bg-gradient-to-r from-blue-600 via-blue-500 to-purple-600 text-white font-medium rounded-lg shadow-sm transition-opacity duration-200 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
