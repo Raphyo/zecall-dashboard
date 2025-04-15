@@ -6,7 +6,11 @@ import { ANALYTICS_URL } from '@/app/lib/api';
 // Check test mode based on Stripe key prefix
 const stripeKey = process.env.STRIPE_RESTRICTED_KEY!;
 const isTestMode = stripeKey.startsWith('rk_test_');
-console.log('🔑 Stripe webhook mode:', isTestMode ? 'test' : 'live');
+
+// Log mode only once during initialization
+if (process.env.NODE_ENV === 'development') {
+  console.log('🔑 Stripe webhook mode:', isTestMode ? 'test' : 'live');
+}
 
 // Define valid subscription plans
 const VALID_SUBSCRIPTION_PLANS = ['essential', 'professional', 'premium', 'custom'] as const;
