@@ -89,10 +89,10 @@ export async function resetPassword(
     console.log('Attempting to send email with Resend...');
     try {
       // In development, we can only send to the verified email
-      const toEmail = isDevelopment ? 'rvannerom@zecall.ai' : validatedEmail;
+      const toEmail = validatedEmail;
       
       const emailResult = await resend.emails.send({
-        from:'Zecall <onboarding@resend.dev>',
+        from:'Zecall <noreply@zecall.ai>',
         to: toEmail,
         subject: 'Réinitialisation de votre mot de passe',
         html: `
@@ -140,9 +140,7 @@ export async function resetPassword(
     }
     
     return {
-      message: isDevelopment 
-        ? 'Email envoyé avec succès à rvannerom@zecall.ai (mode développement). En production, l\'email sera envoyé à ' + validatedEmail
-        : 'Email envoyé avec succès. Vérifiez votre boîte de réception.',
+      message: 'Email envoyé avec succès. Vérifiez votre boîte de réception.',
       success: true
     };
   } catch (error: any) {
