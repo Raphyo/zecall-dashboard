@@ -38,11 +38,21 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 async function updateUserCredits(userId: string, amountInCents: number, subscriptionId: string) {
   try {
+    console.log('🟦 Starting credit update:', { userId, amountInCents, subscriptionId });
     const amountInEuros = amountInCents / 100;
+    console.log('🟦 Converting cents to euros:', { amountInCents, amountInEuros });
+
     const formData = new FormData();
     formData.append('user_id', userId);
     formData.append('amount', amountInEuros.toString());
     formData.append('stripe_payment_id', subscriptionId);
+
+    console.log('🟦 Sending credit update request:', {
+      endpoint: `${ANALYTICS_URL}/api/credits/add`,
+      userId,
+      amount: amountInEuros,
+      subscriptionId
+    });
 
     const response = await fetch(`${ANALYTICS_URL}/api/credits/add`, {
       method: 'POST',
@@ -51,12 +61,15 @@ async function updateUserCredits(userId: string, amountInCents: number, subscrip
 
     if (!response.ok) {
       const errorData = await response.json();
+      console.error('❌ Failed to update credits:', errorData);
       throw new Error(errorData.detail || 'Failed to update credits');
     }
 
-    return await response.json();
+    const result = await response.json();
+    console.log('✅ Successfully updated credits:', result);
+    return result;
   } catch (error) {
-    console.error('Failed to add credits:', error);
+    console.error('❌ Error in updateUserCredits:', error);
     throw error;
   }
 }
@@ -102,11 +115,13 @@ async function updateUserSubscription(userId: string, packageName: string) {
 }
 
 export async function POST(request: Request) {
+  console.log('🟦 Received webhook event');
   const body = await request.text();
   const headersList = await headers();
   const signature = headersList.get('stripe-signature');
 
   if (!signature) {
+    console.log('❌ No stripe signature found in webhook request');
     return NextResponse.json(
       { error: 'No signature found' },
       { status: 400 }
@@ -117,7 +132,9 @@ export async function POST(request: Request) {
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    console.log('🟦 Webhook event verified:', event.type);
   } catch (err) {
+    console.error('❌ Webhook signature verification failed:', err);
     return NextResponse.json(
       { error: 'Webhook signature verification failed' },
       { status: 400 }
@@ -127,25 +144,37 @@ export async function POST(request: Request) {
   try {
     switch (event.type) {
       case 'invoice.paid': {
+        console.log('🟦 Processing invoice.paid event');
         const invoice = event.data.object as Stripe.Invoice;
+        console.log('🟦 Invoice details:', {
+          amount_paid: invoice.amount_paid,
+          subscription: invoice.subscription,
+          customer: invoice.customer
+        });
+
         const amountPaid = invoice.amount_paid;
         const subscriptionId = invoice.subscription as string;
         
         // Get customer to find user ID
+        console.log('🟦 Retrieving customer:', invoice.customer);
         const customer = await stripe.customers.retrieve(invoice.customer as string);
         
         let userId = null;
         if ('metadata' in customer && !customer.deleted) {
           userId = customer.metadata?.user_id;
+          console.log('🟦 Found userId in customer metadata:', userId);
         }
 
         // If no userId in customer, try subscription
         if (!userId && subscriptionId) {
+          console.log('🟦 Looking up userId in subscription metadata');
           const subscription = await stripe.subscriptions.retrieve(subscriptionId);
           userId = subscription.metadata?.user_id;
+          console.log('🟦 Found userId in subscription metadata:', userId);
           
           // If found in subscription but not in customer, update customer
           if (userId && 'metadata' in customer && !customer.deleted && !customer.metadata?.user_id) {
+            console.log('🟦 Updating customer metadata with userId');
             await stripe.customers.update(invoice.customer as string, {
               metadata: {
                 ...customer.metadata,
@@ -156,32 +185,36 @@ export async function POST(request: Request) {
         }
 
         if (!userId || typeof amountPaid !== 'number') {
+          console.error('❌ Missing required data:', { userId, amountPaid });
           throw new Error('Missing user ID or amount in invoice');
         }
 
         // Add subscription credits
+        console.log('🟦 Adding subscription credits');
         await updateUserCredits(userId, amountPaid, subscriptionId);
 
-        // Only update subscription renewal date if this is not the first invoice (subscription creation)
+        // Only update subscription renewal date if this is not the first invoice
         if (subscriptionId) {
+          console.log('🟦 Checking if this is a renewal');
           const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-          console.log('🔵 Retrieved subscription:', {
-            id: subscription.id,
-            items: subscription.items.data,
-            metadata: subscription.metadata
-          });
-
+          
           // Check if this is a renewal (not the first payment)
           const isRenewal = subscription.current_period_start > subscription.start_date;
+          console.log('🟦 Is renewal payment:', isRenewal, {
+            current_period_start: subscription.current_period_start,
+            start_date: subscription.start_date
+          });
           
           if (isRenewal) {
-            console.log('🔵 Processing subscription renewal');
-            // Get the package name from metadata (more reliable than price nickname)
+            console.log('🟦 Processing subscription renewal');
             const packageName = subscription.metadata?.package || 'unknown';
-            console.log('🔵 Package name from metadata:', packageName);
             
             const subscriptionPlan = normalizePackageName(packageName);
-            console.log('🔵 Normalized subscription plan:', subscriptionPlan);
+            console.log('🟦 Renewal details:', {
+              packageName,
+              subscriptionPlan,
+              userId
+            });
             
             const payload = {
               subscription_plan: subscriptionPlan,
@@ -191,8 +224,7 @@ export async function POST(request: Request) {
               subscription_auto_renew: true
             };
             
-            console.log('🔵 Sending renewal update payload:', payload);
-            
+            console.log('🟦 Updating subscription renewal status');
             const response = await fetch(`${ANALYTICS_URL}/api/users/${userId}`, {
               method: 'PATCH',
               headers: {
@@ -202,65 +234,92 @@ export async function POST(request: Request) {
             });
 
             const responseData = await response.json();
-            console.log('🔵 Renewal update response:', { status: response.status, data: responseData });
-
             if (!response.ok) {
-              console.error('Failed to update subscription renewal:', responseData);
+              console.error('❌ Failed to update subscription renewal:', responseData);
+            } else {
+              console.log('✅ Successfully updated subscription renewal:', responseData);
             }
           } else {
-            console.log('🔵 Skipping renewal update - this is the initial subscription payment');
+            console.log('🟦 Skipping renewal update - this is the initial subscription payment');
           }
         }
         
+        console.log('✅ Successfully processed subscription payment');
         return NextResponse.json({ 
           message: 'Subscription payment processed successfully'
         });
       }
 
       case 'checkout.session.completed': {
+        console.log('🟦 Processing checkout.session.completed event');
         const session = event.data.object as Stripe.Checkout.Session;
+        console.log('🟦 Checkout session details:', {
+          mode: session.mode,
+          subscription: session.subscription,
+          metadata: session.metadata
+        });
 
         // Only handle subscription checkouts
         if (session.mode !== 'subscription' || !session.subscription) {
+          console.log('🟦 Skipping non-subscription checkout');
           return NextResponse.json({ message: 'Non-subscription checkout completed' });
         }
 
         // Get customer to ensure we have the user ID
+        console.log('🟦 Retrieving customer:', session.customer);
         const customer = await stripe.customers.retrieve(session.customer as string);
         if (!('metadata' in customer) || customer.deleted) {
+          console.error('❌ Invalid customer:', session.customer);
           return NextResponse.json({ error: 'Invalid customer' }, { status: 400 });
         }
 
-        const userId = customer.metadata?.user_id;
+        // Get user ID from session metadata
+        const userId = session.metadata?.user_id;
         if (!userId) {
-          return NextResponse.json({ error: 'No userId found' }, { status: 400 });
+          console.error('❌ No userId found in session metadata');
+          return NextResponse.json({ error: 'No userId found in session metadata' }, { status: 400 });
         }
 
-        // Get subscription to update its metadata
+        console.log('🟦 Retrieving subscription:', session.subscription);
         const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
         
         const metadata = {
           user_id: userId,
-          package: session.metadata?.package || subscription.items.data[0]?.price?.nickname || 'unknown',
-          billing_period: session.metadata?.billing_period || session.metadata?.billingPeriod || 'unknown'
+          package: session.metadata?.package || 'unknown',
+          billing_period: session.metadata?.billing_period || 'unknown'
         };
 
-        // Update subscription and customer with complete metadata
-        await Promise.all([
-          stripe.subscriptions.update(session.subscription as string, { metadata }),
-          stripe.customers.update(session.customer as string, { metadata }),
-          // Update user subscription in backend
-          updateUserSubscription(userId, metadata.package)
-        ]);
+        console.log('🟦 Setting subscription metadata:', metadata);
 
-        return NextResponse.json({ message: 'Subscription metadata updated' });
+        try {
+          console.log('🟦 Updating subscription and customer with metadata');
+          await Promise.all([
+            stripe.subscriptions.update(session.subscription as string, { metadata }),
+            stripe.customers.update(session.customer as string, { metadata }),
+            updateUserSubscription(userId, metadata.package)
+          ]);
+
+          console.log('✅ Successfully completed subscription setup');
+          return NextResponse.json({ 
+            message: 'Subscription created and metadata updated successfully',
+            metadata: metadata
+          });
+        } catch (error) {
+          console.error('❌ Failed to update subscription metadata:', error);
+          return NextResponse.json({ 
+            error: 'Failed to update subscription metadata',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          }, { status: 500 });
+        }
       }
 
       default: {
+        console.log('🟦 Unhandled event type:', event.type);
         return NextResponse.json({ message: 'Unhandled event type' });
       }
     }
   } catch (error) {
+    console.error('❌ Webhook handler failed:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Webhook handler failed' },
       { status: 500 }
