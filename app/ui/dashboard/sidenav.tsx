@@ -6,8 +6,9 @@ import AcmeLogo from '@/app/ui/acme-logo';
 import { useSession } from 'next-auth/react';
 import ProfileMenu from '@/app/components/ProfileMenu';
 import { useState, useEffect } from 'react';
-import { CurrencyEuroIcon, ClockIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { CurrencyEuroIcon, ClockIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import SubscriptionPackagesModal from '@/app/components/SubscriptionPackagesModal';
+import clsx from 'clsx';
 
 export default function SideNav() {
   const { data: session } = useSession();
@@ -54,100 +55,90 @@ export default function SideNav() {
   };
 
   return (
-    <div 
-      className={`flex h-full flex-col bg-white/80 backdrop-blur-xl border-r border-gray-200/80 transition-all duration-300 ease-in-out ${
-        isCollapsed ? 'w-20' : 'w-72'
-      }`}
-    >
-      {/* Logo and Collapse Button */}
-      <div className="flex h-16 shrink-0 items-center justify-between px-4">
+    <div className={clsx(
+      "flex h-full flex-col bg-white border-r border-gray-200 transition-all duration-300",
+      isCollapsed ? "w-20" : "w-64"
+    )}>
+      {/* Logo Section */}
+      <div className="flex h-16 shrink-0 items-center justify-between px-6">
         <Link
           className="flex items-center transition-transform hover:scale-[0.98]"
           href="/"
         >
-          <div className={`transition-all duration-300 ${isCollapsed ? 'w-8' : 'w-32'}`}>
+          <div className={clsx(
+            "transition-all duration-300",
+            isCollapsed ? "w-8" : "w-32 md:w-36"
+          )}>
             <AcmeLogo />
           </div>
         </Link>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+          className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
         >
-          <ChevronRightIcon 
-            className={`h-5 w-5 text-gray-500 transition-transform duration-300 ${
-              isCollapsed ? 'rotate-180' : ''
-            }`}
-          />
+          {isCollapsed ? (
+            <ChevronRightIcon className="h-5 w-5 text-gray-500" />
+          ) : (
+            <ChevronLeftIcon className="h-5 w-5 text-gray-500" />
+          )}
         </button>
       </div>
 
-      <div className="flex grow flex-col justify-between gap-4 px-4 py-6">
+      <div className="flex grow flex-col justify-between gap-4 px-4">
         {/* Navigation Links */}
-        <div className="space-y-1">
-          <NavLinks />
+        <div className="space-y-1 py-4">
+          <NavLinks isCollapsed={isCollapsed} />
         </div>
 
         {/* Credits and Profile Section */}
-        <div className="space-y-6">
+        <div className={clsx(
+          "space-y-6 pb-6 transition-opacity duration-300",
+          isCollapsed && "opacity-0 pointer-events-none"
+        )}>
           {/* Credits Display */}
-          <div className="space-y-3">
+          <div className="space-y-3 px-2">
             {/* Balance Card */}
-            <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/50 to-blue-50/80 p-4 transition-all duration-300 hover:shadow-lg hover:shadow-blue-100/50">
+            <div className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 p-4 transition-all hover:shadow-md">
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <div className="flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-2 shadow-inner shadow-blue-600/20">
-                    <CurrencyEuroIcon className="h-5 w-5 text-white" />
+                  <div className="rounded-full bg-blue-100 p-2 group-hover:bg-blue-200 transition-colors">
+                    <CurrencyEuroIcon className="h-5 w-5 text-blue-600" />
                   </div>
-                  <div className={`transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>
-                    <p className="text-xs font-medium text-blue-600/80">Balance</p>
-                    <p className="text-lg font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                      {credits.balance.toFixed(2)}€
-                    </p>
+                  <div>
+                    <p className="text-xs font-medium text-blue-600 opacity-80">Balance</p>
+                    <p className="text-lg font-semibold text-blue-700">{credits.balance.toFixed(2)}€</p>
                   </div>
                 </div>
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500/10 to-indigo-600/10" />
+                <div className="h-8 w-8 rounded-full bg-blue-100/50 group-hover:bg-blue-100 transition-colors" />
               </div>
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-400/0 via-blue-400/5 to-blue-400/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-400/0 via-blue-400/5 to-blue-400/0 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
 
             {/* Minutes Card */}
-            <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-50 via-pink-50/50 to-purple-50/80 p-4 transition-all duration-300 hover:shadow-lg hover:shadow-purple-100/50">
+            <div className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 p-4 transition-all hover:shadow-md">
               <div className="relative z-10 flex items-center justify-between">
                 <div className="flex items-center space-x-3">
-                  <div className="flex items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 p-2 shadow-inner shadow-purple-600/20">
-                    <ClockIcon className="h-5 w-5 text-white" />
+                  <div className="rounded-full bg-purple-100 p-2 group-hover:bg-purple-200 transition-colors">
+                    <ClockIcon className="h-5 w-5 text-purple-600" />
                   </div>
-                  <div className={`transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>
-                    <p className="text-xs font-medium text-purple-600/80">Minutes</p>
-                    <p className="text-lg font-semibold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                      {credits.minutes}
-                    </p>
+                  <div>
+                    <p className="text-xs font-medium text-purple-600 opacity-80">Minutes</p>
+                    <p className="text-lg font-semibold text-purple-700">{credits.minutes}</p>
                   </div>
                 </div>
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-purple-500/10 to-pink-600/10" />
+                <div className="h-8 w-8 rounded-full bg-purple-100/50 group-hover:bg-purple-100 transition-colors" />
               </div>
-              <div className="absolute inset-0 bg-gradient-to-r from-purple-400/0 via-purple-400/5 to-purple-400/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-400/0 via-purple-400/5 to-purple-400/0 opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
 
             {/* Buy Credits Button */}
             <button
               onClick={() => setIsSubscriptionModalOpen(true)}
-              className={`group relative w-full overflow-hidden rounded-2xl transition-all duration-300 ${
-                isCollapsed ? 'p-2' : 'p-[1px]'
-              }`}
+              className="relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-[1px] transition-all hover:from-blue-500 hover:via-indigo-500 hover:to-purple-500 active:scale-[0.99]"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600" />
-              <div className="relative bg-white hover:bg-transparent px-4 py-3 rounded-[14px] transition-colors duration-300">
-                <span className={`relative z-10 flex items-center justify-center font-medium transition-all duration-300 ${
-                  isCollapsed 
-                    ? 'text-transparent' 
-                    : 'text-gray-900 group-hover:text-white'
-                }`}>
-                  {isCollapsed ? (
-                    <CurrencyEuroIcon className="h-5 w-5 text-indigo-600 group-hover:text-white transition-colors duration-300" />
-                  ) : (
-                    'Acheter des crédits'
-                  )}
+              <div className="relative bg-white px-4 py-3 rounded-[11px] group transition-colors hover:bg-transparent">
+                <span className="relative z-10 flex items-center justify-center text-sm font-semibold text-gray-900 transition-colors group-hover:text-white">
+                  Acheter des crédits
                 </span>
               </div>
             </button>
@@ -155,8 +146,8 @@ export default function SideNav() {
 
           {/* Profile Menu */}
           {session?.user?.email && (
-            <div>
-              <ProfileMenu email={session.user.email} isCollapsed={isCollapsed} />
+            <div className="px-2">
+              <ProfileMenu email={session.user.email} />
             </div>
           )}
         </div>

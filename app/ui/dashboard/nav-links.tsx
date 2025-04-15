@@ -33,7 +33,11 @@ const LOCKED_USERS = [
 // Add list of features that can be locked
 const LOCKED_FEATURES = ['campaigns', 'ai-agents'];
 
-export default function NavLinks() {
+interface NavLinksProps {
+  isCollapsed?: boolean;
+}
+
+export default function NavLinks({ isCollapsed = false }: NavLinksProps) {
   const pathname = usePathname();
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
   const { data: session } = useSession();
@@ -105,7 +109,7 @@ export default function NavLinks() {
                 className={clsx(
                   'group relative flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all duration-200',
                   'text-gray-400 cursor-not-allowed',
-                  'md:justify-start',
+                  isCollapsed ? 'justify-center' : 'justify-start',
                   'w-14 md:w-auto'
                 )}
                 onMouseEnter={() => setShowTooltip(link.name)}
@@ -114,20 +118,21 @@ export default function NavLinks() {
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100">
                   <LinkIcon className="h-5 w-5" />
                 </div>
-                <span className="hidden md:block truncate">{link.name}</span>
-                <LockClosedIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 hidden md:block" />
+                {!isCollapsed && <span className="truncate">{link.name}</span>}
+                {!isCollapsed && <LockClosedIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4" />}
               </button>
               
               {/* Tooltip for collapsed state */}
-              <div className={clsx(
-                'absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap z-50',
-                'transition-opacity duration-200',
-                showTooltip === link.name ? 'opacity-100' : 'opacity-0 pointer-events-none',
-                'md:hidden' // Only show on mobile/collapsed state
-              )}>
-                {link.name}
-                <div className="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
-              </div>
+              {isCollapsed && (
+                <div className={clsx(
+                  'absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap z-50',
+                  'transition-opacity duration-200',
+                  showTooltip === link.name ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                )}>
+                  {link.name}
+                  <div className="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                </div>
+              )}
             </div>
           );
         }
@@ -139,10 +144,10 @@ export default function NavLinks() {
               className={clsx(
                 'group relative flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all duration-200',
                 'hover:shadow-sm hover:-translate-y-[1px]',
-                'md:justify-start',
+                isCollapsed ? 'justify-center' : 'justify-start',
                 'w-14 md:w-auto',
                 {
-                  [link.activeClass + ' border-l-4']: isActive,
+                  [link.activeClass + (isCollapsed ? '' : ' border-l-4')]: isActive,
                   'text-gray-600 hover:bg-gray-50': !isActive,
                 },
               )}
@@ -155,11 +160,11 @@ export default function NavLinks() {
               )}>
                 <LinkIcon className="h-5 w-5" />
               </div>
-              <span className="hidden md:block truncate">{link.name}</span>
+              {!isCollapsed && <span className="truncate">{link.name}</span>}
               
               {/* Active indicator */}
-              {isActive && (
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-current hidden md:block" />
+              {isActive && !isCollapsed && (
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-current" />
               )}
               
               {/* Hover effect */}
@@ -176,15 +181,16 @@ export default function NavLinks() {
             </Link>
 
             {/* Tooltip for collapsed state */}
-            <div className={clsx(
-              'absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap z-50',
-              'transition-opacity duration-200',
-              showTooltip === link.name ? 'opacity-100' : 'opacity-0 pointer-events-none',
-              'md:hidden' // Only show on mobile/collapsed state
-            )}>
-              {link.name}
-              <div className="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
-            </div>
+            {isCollapsed && (
+              <div className={clsx(
+                'absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap z-50',
+                'transition-opacity duration-200',
+                showTooltip === link.name ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              )}>
+                {link.name}
+                <div className="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+              </div>
+            )}
           </div>
         );
       })}
