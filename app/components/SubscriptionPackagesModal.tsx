@@ -43,7 +43,7 @@ const packages: SubscriptionPackage[] = [
   },
   {
     name: 'professional',
-    displayName: 'Professionel',
+    displayName: 'Professionnel',
     price: 200,
     minutes: 800,
     phoneNumbers: 2,
