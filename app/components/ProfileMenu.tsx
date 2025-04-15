@@ -53,7 +53,7 @@ function getSubscriptionStatusLabel(status: string) {
 }
 
 export default function ProfileMenu({ email }: ProfileMenuProps) {
-  const { subscription, isLoading } = useSubscription();
+  const { subscription, isLoading, setShowUpgradeModal } = useSubscription();
   
   const handleSignOut = async () => {
     await signOut({ 
@@ -85,6 +85,21 @@ export default function ProfileMenu({ email }: ProfileMenuProps) {
               <div className="text-xs font-medium text-gray-500 mb-2">Abonnement</div>
               {isLoading ? (
                 <div className="text-sm text-gray-500">Chargement...</div>
+              ) : subscription?.status === 'expired' ? (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-gray-900">Aucun forfait actif</span>
+                    <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${getSubscriptionStatusStyle('expired')}`}>
+                      Expiré
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setShowUpgradeModal(true)}
+                    className="mt-2 block w-full text-left text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    Choisir un forfait →
+                  </button>
+                </div>
               ) : subscription ? (
                 <div>
                   <div className="flex items-center justify-between mb-1">
