@@ -81,10 +81,12 @@ export default function SideNav() {
               <CurrencyEuroIcon className="h-5 w-5 text-blue-600 mr-2" />
               <span className="text-sm font-medium text-blue-900">{credits.balance.toFixed(2)}€</span>
             </div>
+            {/* Minutes display temporarily hidden
             <div className="flex items-center bg-purple-50 px-4 py-2 rounded-md border border-purple-100">
               <ClockIcon className="h-5 w-5 text-purple-600 mr-2" />
               <span className="text-sm font-medium text-purple-900">{credits.minutes} minutes</span>
             </div>
+            */}
             <button
               // Temporarily disabled - TODO: Re-enable when ready
               disabled={true}
