@@ -107,21 +107,22 @@ export default function CreateCampaignPage() {
       setIsSubmitting(true);
 
       // Check credits before proceeding
-      const estimatedDurationSeconds = contactsCount * 120; // 2 minutes (120 seconds) per contact
-      const creditsResponse = await fetch(`/api/credits/check?duration_seconds=${estimatedDurationSeconds}`);
+      const estimatedMinutes = Math.ceil(contactsCount * 2); // 2 minutes per contact
+      const creditsResponse = await fetch('/api/credits');
       const creditsData = await creditsResponse.json();
 
       if (!creditsResponse.ok) {
         throw new Error(creditsData.error || 'Failed to check credits');
       }
 
-      if (!creditsData.has_sufficient_credits) {
-        const requiredCredits = creditsData.estimated_cost;
-        const currentBalance = creditsData.current_balance;
+      const minutesBalance = creditsData.credits.minutes_balance;
+      const hasSufficientCredits = minutesBalance >= estimatedMinutes;
+
+      if (!hasSufficientCredits) {
         toast.error(
           <div className="text-sm">
-            <p className="font-medium mb-1">Crédits insuffisants</p>
-            <p>Vous avez {currentBalance.toFixed(2)}€ mais cette campagne nécessite environ {requiredCredits.toFixed(2)}€</p>
+            <p className="font-medium mb-1">Minutes insuffisantes</p>
+            <p>Vous avez {minutesBalance} minutes disponibles mais cette campagne nécessite environ {estimatedMinutes} minutes</p>
             <p className="mt-2">Veuillez recharger votre compte.</p>
           </div>,
           {
