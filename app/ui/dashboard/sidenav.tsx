@@ -51,7 +51,7 @@ export default function SideNav() {
         throw new Error(data.error || 'Failed to fetch credits');
       }
 
-      console.log('Credits response:', data);
+      console.log('Credits raw response:', data);
       setCredits({
         balance: data.credits.balance,
         minutes: data.credits.minutes_balance
