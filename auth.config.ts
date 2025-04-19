@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import Google from "next-auth/providers/google";
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { sql } from '@vercel/postgres';
@@ -11,6 +12,24 @@ async function getUser(email: string): Promise<User | undefined> {
     return user.rows[0];
   } catch (error) {
     throw new Error('Failed to fetch user.');
+  }
+}
+
+async function createUserFromGoogle(name: string, email: string): Promise<User> {
+  try {
+    // Generate a random password for Google users since the field is required
+    const randomPassword = await bcrypt.hash(Math.random().toString(36), 10);
+    
+    const result = await sql<User>`
+      INSERT INTO users (name, email, password)
+      VALUES (${name}, ${email}, ${randomPassword})
+      RETURNING *
+    `;
+    
+    return result.rows[0];
+  } catch (error) {
+    console.error('Failed to create user from Google:', error);
+    throw new Error('Failed to create user from Google sign-in.');
   }
 }
 
@@ -30,9 +49,34 @@ export const authConfig = {
       }
       return true;
     },
-    async jwt({ token, user }) {
+    async signIn({ user, account }) {
+      if (account?.provider === 'google' && user.email && user.name) {
+        try {
+          // Check if user exists
+          const existingUser = await getUser(user.email);
+          if (!existingUser) {
+            // Create new user if they don't exist
+            await createUserFromGoogle(user.name, user.email);
+          }
+          return true;
+        } catch (error) {
+          console.error('Error in Google sign in:', error);
+          return false;
+        }
+      }
+      return true;
+    },
+    async jwt({ token, user, account }) {
       if (user) {
-        token.id = (user as User).id;
+        // For Google sign-in, we need to fetch the user from our database
+        if (account?.provider === 'google' && user.email) {
+          const dbUser = await getUser(user.email);
+          if (dbUser) {
+            token.id = dbUser.id;
+          }
+        } else {
+          token.id = (user as User).id;
+        }
       }
       return token;
     },
@@ -44,6 +88,10 @@ export const authConfig = {
     }
   },
   providers: [
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
     Credentials({
       async authorize(credentials) {
         const parsedCredentials = z
