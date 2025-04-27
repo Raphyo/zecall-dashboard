@@ -116,7 +116,7 @@ interface AIAgent {
   max_call_duration: number;
   knowledge_base_path?: string;
   variables?: Variable[];
-  labels?: string[];
+  labels?: { name: string; description: string }[];
   vad_stop_secs?: number;
   post_call_actions?: PostCallAction[];
   wake_phrase_detection?: {
@@ -176,6 +176,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   const [selectedPostCallActionType, setSelectedPostCallActionType] = useState<'sms' | 'email' | 'api' | 'notification' | null>(null);
   const [postCallActionConfig, setPostCallActionConfig] = useState<SMSConfig | EmailConfig | APIConfig | NotificationConfig | null>(null);
   const [editingPostCallAction, setEditingPostCallAction] = useState<{ index: number; action: PostCallAction } | null>(null);
+  const [newLabel, setNewLabel] = useState({ name: '', description: '' });
 
   const ambientSounds = [
     { id: 'none', name: 'Aucun', url: null },
@@ -804,19 +805,20 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     }
   };
 
-  const handleAddLabel = (label: string) => {
-    if (label && !agent.labels.includes(label)) {
+  const handleAddLabel = (labelData: { name: string; description: string }) => {
+    if (labelData.name && labelData.description && !agent.labels.some(l => l.name === labelData.name)) {
       setAgent(prev => ({
         ...prev,
-        labels: [...prev.labels, label]
+        labels: [...prev.labels, labelData]
       }));
+      setNewLabel({ name: '', description: '' }); // Reset the form
     }
   };
 
-  const handleRemoveLabel = (label: string) => {
+  const handleRemoveLabel = (labelName: string) => {
     setAgent(prev => ({
       ...prev,
-      labels: prev.labels.filter(l => l !== label)
+      labels: prev.labels.filter(l => l.name !== labelName)
     }));
   };
 
@@ -1525,49 +1527,65 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               </p>
               
               {/* Label Input */}
-              <div className="flex gap-2 mb-4">
-                <input
-                  type="text"
-                  placeholder="Ajouter un label..."
-                  className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const input = e.target as HTMLInputElement;
-                      handleAddLabel(input.value.trim());
-                      input.value = '';
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const input = document.querySelector('input[placeholder="Ajouter un label..."]') as HTMLInputElement;
-                    handleAddLabel(input.value.trim());
-                    input.value = '';
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Ajouter
-                </button>
+              <div className="flex flex-col gap-2 mb-4">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nom du label..."
+                    value={newLabel.name}
+                    onChange={(e) => setNewLabel(prev => ({ ...prev, name: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newLabel.name && newLabel.description) {
+                        e.preventDefault();
+                        handleAddLabel(newLabel);
+                      }
+                    }}
+                    className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Description du label..."
+                    value={newLabel.description}
+                    onChange={(e) => setNewLabel(prev => ({ ...prev, description: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newLabel.name && newLabel.description) {
+                        e.preventDefault();
+                        handleAddLabel(newLabel);
+                      }
+                    }}
+                    className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddLabel(newLabel)}
+                    disabled={!newLabel.name || !newLabel.description}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Ajouter
+                  </button>
+                </div>
               </div>
 
               {/* Labels Display */}
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2">
                 {agent.labels.map((label, index) => (
-                  <span
+                  <div
                     key={index}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-700"
+                    className="flex items-center justify-between p-2 rounded-lg bg-blue-50 border border-blue-100"
                   >
-                    {label}
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-blue-700">{label.name}</span>
+                      <span className="text-sm text-blue-600">-</span>
+                      <span className="text-sm text-blue-600">{label.description}</span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => handleRemoveLabel(label)}
-                      className="p-0.5 hover:bg-blue-200 rounded-full"
+                      onClick={() => handleRemoveLabel(label.name)}
+                      className="p-1 text-blue-700 hover:bg-blue-100 rounded-full"
                     >
                       <XMarkIcon className="h-4 w-4" />
                     </button>
-                  </span>
+                  </div>
                 ))}
               </div>
             </div>
