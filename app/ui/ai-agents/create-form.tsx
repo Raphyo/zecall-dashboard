@@ -146,7 +146,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     maxRetries: initialData?.max_retries || 3,
     maxCallDuration: initialData?.max_call_duration || 30,
     variables: initialData?.variables || [...builtInVariables],
-    labels: initialData?.labels || [],
+    labels: Array.isArray(initialData?.labels) ? initialData.labels : [],
     postCallActions: initialData?.post_call_actions || [],
     vadStopSecs: initialData?.vad_stop_secs || 0.8,
     wakePhraseDetection: initialData?.wake_phrase_detection || {
@@ -1568,7 +1568,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
               {/* Labels Display */}
               <div className="flex flex-col gap-2">
-                {agent.labels.map((label, index) => (
+                {(agent.labels || []).map((label, index) => (
                   <div
                     key={index}
                     className="flex items-center justify-between p-2 rounded-lg bg-blue-50 border border-blue-100"
