@@ -527,6 +527,9 @@ function CallHistoryContent() {
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Nom
                     </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-36">
+                      Email
+                    </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-24">
                       Direction
                     </th>
@@ -610,6 +613,9 @@ function CallHistoryContent() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.user_name}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        {call.user_email || '-'}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
                         <span 
