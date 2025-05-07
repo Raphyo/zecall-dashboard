@@ -536,9 +536,6 @@ function CallHistoryContent() {
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Destinataire
                     </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
-                      Nom
-                    </th>
                     <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pr-0 w-12">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -647,9 +644,6 @@ function CallHistoryContent() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.callee_number}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {call.user_name}
-                      </td>
                       <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
                         <button
                           onClick={(e) => {
@@ -754,6 +748,14 @@ function CallHistoryContent() {
                           {selectedCallDetails.direction}
                         </span>
                       </dd>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <dt className="text-sm font-medium text-gray-500">Nom</dt>
+                      <dd className="text-sm text-gray-900 col-span-2">{selectedCallDetails.user_name || '-'}</dd>
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <dt className="text-sm font-medium text-gray-500">Email</dt>
+                      <dd className="text-sm text-gray-900 col-span-2">{selectedCallDetails.user_email || '-'}</dd>
                     </div>
                     {selectedCallDetails.campaign_name && (
                       <div className="grid grid-cols-3 gap-4">
