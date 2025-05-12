@@ -124,6 +124,7 @@ interface AIAgent {
     phrases: string[];
     keepalive_timeout: number;
   };
+  with_tools?: boolean;  // Add the new field
 }
 
 export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; initialData?: AIAgent }) {
@@ -292,6 +293,11 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       formData.append('labels', JSON.stringify(agent.labels));
       formData.append('vad_stop_secs', agent.vadStopSecs.toString());
       formData.append('wake_phrase_detection', JSON.stringify(agent.wakePhraseDetection));
+      
+      // Add with_tools field based on whether there are any functions
+      const hasTools = functions.length > 0;
+      formData.append('with_tools', hasTools.toString());
+
       console.log('Debug - FormData after appending vad_stop_secs:');
       for (const [key, value] of formData.entries()) {
         console.log(`${key}: ${value}`);
