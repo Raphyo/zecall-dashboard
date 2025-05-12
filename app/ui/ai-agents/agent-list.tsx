@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { PencilIcon, TrashIcon, PlusIcon, PhoneIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PencilIcon, TrashIcon, PlusIcon, PhoneIcon, XMarkIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
-import { getAIAgents, deleteAIAgent, getAgentFunctions, removeAgentFunction } from '@/app/lib/api';
+import { getAIAgents, deleteAIAgent, getAgentFunctions, removeAgentFunction, createAIAgent } from '@/app/lib/api';
+import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 import { EmptyState } from './empty-state';
 import { WebRTCClient } from './webrtc-client';
@@ -30,6 +31,21 @@ interface AIAgent {
   llm_prompt: string;
   created_at: string;
   user_id: string;
+  allow_interruptions?: boolean;
+  ai_starts_conversation?: boolean;
+  silence_detection?: boolean;
+  silence_timeout?: number;
+  max_retries?: number;
+  max_call_duration?: number;
+  variables?: any[];
+  labels?: { name: string; description: string }[];
+  vad_stop_secs?: number;
+  wake_phrase_detection?: {
+    enabled: boolean;
+    phrases: string[];
+    keepalive_timeout: number;
+  };
+  post_call_actions?: any[];
 }
 
 
@@ -231,6 +247,56 @@ export function AgentsList() {
     setHasMessages(true);
   };
 
+  const handleDuplicate = async (agent: AIAgent) => {
+    try {
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+
+      // Create a FormData object for the new agent
+      const formData = new FormData();
+      formData.append('name', `${agent.name} (copie)`);
+      formData.append('voice_name', agent.voice_name);
+      formData.append('language', agent.language);
+      formData.append('llm_prompt', agent.llm_prompt);
+      formData.append('background_audio', agent.background_audio);
+      formData.append('allow_interruptions', String(agent.allow_interruptions ?? false));
+      formData.append('ai_starts_conversation', String(agent.ai_starts_conversation ?? false));
+      formData.append('silence_detection', String(agent.silence_detection ?? false));
+      formData.append('silence_timeout', String(agent.silence_timeout ?? 5));
+      formData.append('max_retries', String(agent.max_retries ?? 3));
+      formData.append('max_call_duration', String(agent.max_call_duration ?? 30));
+      formData.append('labels', JSON.stringify(agent.labels ?? []));
+      formData.append('vad_stop_secs', String(agent.vad_stop_secs ?? 0.8));
+      formData.append('wake_phrase_detection', JSON.stringify(agent.wake_phrase_detection ?? {
+        enabled: false,
+        phrases: [],
+        keepalive_timeout: 30
+      }));
+
+      // Filter out built-in variables and convert to dynamic_variables
+      const dynamicVariables = (agent.variables ?? []).filter(v => !v.isBuiltIn);
+      formData.append('dynamic_variables', JSON.stringify(dynamicVariables));
+
+      // Create the duplicated agent
+      const duplicatedAgent = await createAIAgent(formData, session.user.id);
+
+      // Update the UI with the new agent
+      setAgents(prev => [...prev, duplicatedAgent]);
+
+      setToast({
+        message: 'Agent dupliqué avec succès',
+        type: 'success'
+      });
+    } catch (error: any) {
+      console.error('Error duplicating agent:', error);
+      setToast({
+        message: 'Erreur lors de la duplication de l\'agent',
+        type: 'error'
+      });
+    }
+  };
+
   if (status === 'loading' || loading) {
     return <AgentsListSkeleton />;
   }
@@ -312,6 +378,13 @@ export function AgentsList() {
               >
                 <PencilIcon className="h-4 w-4 mr-2" />
                 Modifier
+              </button>
+              <button
+                onClick={() => handleDuplicate(agent)}
+                className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                title="Dupliquer l'agent"
+              >
+                <DocumentDuplicateIcon className="h-4 w-4" />
               </button>
               <button
                 onClick={() => {

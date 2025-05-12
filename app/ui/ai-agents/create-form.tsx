@@ -32,10 +32,20 @@ interface ParsedParameters {
 }
 
 // Update the existing interfaces
+interface Parameter {
+  name: string;
+  type: string;
+  description: string;
+  required: boolean;
+}
+
 interface CustomFunction extends BaseConfig {
   url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  contentType: string;
   apiTimeout?: number;
   parameters?: string;
+  params: Parameter[];
   speakDuringExecution: boolean;
   executionMessage?: string;
 }
@@ -104,7 +114,7 @@ interface AIAgent {
   max_call_duration: number;
   knowledge_base_path?: string;
   variables?: Variable[];
-  labels?: string[];
+  labels?: { name: string; description: string }[];
   vad_stop_secs?: number;
   post_call_actions?: PostCallAction[];
   wake_phrase_detection?: {
@@ -112,6 +122,7 @@ interface AIAgent {
     phrases: string[];
     keepalive_timeout: number;
   };
+  with_tools?: boolean;  // Add the new field
 }
 
 export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; initialData?: AIAgent }) {
@@ -134,7 +145,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     maxRetries: initialData?.max_retries || 3,
     maxCallDuration: initialData?.max_call_duration || 30,
     variables: initialData?.variables || [...builtInVariables],
-    labels: initialData?.labels || [],
+    labels: Array.isArray(initialData?.labels) ? initialData.labels : [],
     postCallActions: initialData?.post_call_actions || [],
     vadStopSecs: initialData?.vad_stop_secs || 0.8,
     wakePhraseDetection: initialData?.wake_phrase_detection || {
@@ -164,6 +175,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   const [selectedPostCallActionType, setSelectedPostCallActionType] = useState<'sms' | 'email' | 'api' | 'notification' | null>(null);
   const [postCallActionConfig, setPostCallActionConfig] = useState<SMSConfig | EmailConfig | APIConfig | NotificationConfig | null>(null);
   const [editingPostCallAction, setEditingPostCallAction] = useState<{ index: number; action: PostCallAction } | null>(null);
+  const [newLabel, setNewLabel] = useState({ name: '', description: '' });
 
   const ambientSounds = [
     { id: 'none', name: 'Aucun', url: null },
@@ -279,6 +291,11 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       formData.append('labels', JSON.stringify(agent.labels));
       formData.append('vad_stop_secs', agent.vadStopSecs.toString());
       formData.append('wake_phrase_detection', JSON.stringify(agent.wakePhraseDetection));
+      
+      // Add with_tools field based on whether there are any functions
+      const hasTools = functions.length > 0;
+      formData.append('with_tools', hasTools.toString());
+
       console.log('Debug - FormData after appending vad_stop_secs:');
       for (const [key, value] of formData.entries()) {
         console.log(`${key}: ${value}`);
@@ -329,19 +346,40 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
             const customConfig = func.config as CustomFunction;
             functionData.is_external = true;
             try {
-              // Parse and re-stringify to ensure valid JSON
-              const params = customConfig.parameters ? JSON.parse(customConfig.parameters) : {};
-              functionData.parameters = JSON.stringify(params);
-            } catch (e) {
-              console.error('Error parsing parameters JSON:', e);
-              functionData.parameters = '{}';
+              // Construct parameters JSON without the type field
+              const paramsSchema = {
+                properties: Object.fromEntries(
+                  (customConfig.params || []).map(param => [
+                    param.name,
+                    {
+                      type: param.type,
+                      description: param.description
+                    }
+                  ])
+                ),
+                required: (customConfig.params || [])
+                  .filter(param => param.required)
+                  .map(param => param.name)
+              };
+              
+              functionData.parameters = JSON.stringify(paramsSchema);
+              functionData.external_config = {
+                url: customConfig.url,
+                method: customConfig.method || 'POST',
+                contentType: customConfig.contentType,
+                apiTimeout: customConfig.apiTimeout || 120000,
+                speakDuringExecution: customConfig.speakDuringExecution,
+                executionMessage: customConfig.executionMessage || ''
+              };
+            } catch (e: any) {
+              console.error('Error constructing parameters JSON:', e);
+              setToast({
+                message: `Erreur de format JSON pour la fonction ${func.config.name}: ${e.message}`,
+                type: 'error'
+              });
+              setIsSubmitting(false);
+              return;
             }
-            functionData.external_config = {
-              url: customConfig.url,
-              apiTimeout: customConfig.apiTimeout || 120000,
-              speakDuringExecution: customConfig.speakDuringExecution,
-              executionMessage: customConfig.executionMessage || ''
-            };
           } else if (func.type === 'transfer') {
             functionData.parameters = JSON.stringify({
               transferTo: (func.config as TransferFunction).transferTo
@@ -420,6 +458,8 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   };
 
   const handleEditFunction = (index: number, func: AgentFunction) => {
+    console.log('Editing function:', { index, func });
+    
     // Ensure we have a valid type
     if (!func.type) {
       if (func.config.name === 'end_call') {
@@ -434,6 +474,12 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     // First set the editing state
     const newEditingState = { index, function: func };
     const newFunctionConfig = { ...func.config };
+    
+    console.log('Setting function edit state:', {
+      editingState: newEditingState,
+      functionConfig: newFunctionConfig,
+      type: func.type
+    });
     
     // Ensure we set all states in the correct order
     setEditingFunction(newEditingState);
@@ -575,30 +621,54 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       if (agentId && session?.user?.id) {
         try {
           const fetchedFunctions = await getAgentFunctions(agentId, session.user.id);
+          console.log('Fetched functions from API:', JSON.stringify(fetchedFunctions, null, 2));
           
           // Transform the fetched functions to match our local format
           const transformedFunctions = fetchedFunctions.map((func: any) => {
+            console.log('\nProcessing function:', func.name);
+            console.log('Raw function data:', {
+              is_external: func.is_external,
+              parameters: func.parameters,
+              external_config: func.external_config
+            });
+            
             // Safely parse parameters
-            let parsedParameters: ParsedParameters = {};
+            let parsedParameters: any = {};
+            let params: Parameter[] = [];
             try {
+              // Handle both string and object parameters
               if (typeof func.parameters === 'string') {
+                console.log('Raw parameters string:', func.parameters);
                 parsedParameters = JSON.parse(func.parameters || '{}');
-              } else if (func.parameters && typeof func.parameters === 'object') {
+              } else if (typeof func.parameters === 'object') {
+                console.log('Raw parameters object:', func.parameters);
                 parsedParameters = func.parameters;
               }
+              console.log('Parsed parameters object:', parsedParameters);
+              
+              // Convert parameters schema to params array for custom functions
+              if (func.is_external && parsedParameters.properties) {
+                console.log('Properties found:', parsedParameters.properties);
+                console.log('Required fields:', parsedParameters.required);
+                
+                params = Object.entries(parsedParameters.properties).map(([name, prop]: [string, any]) => {
+                  const param = {
+                    name,
+                    type: prop.type,
+                    description: prop.description,
+                    required: parsedParameters.required?.includes(name) || false
+                  };
+                  console.log('Created parameter:', param);
+                  return param;
+                });
+                
+                console.log('Final params array:', params);
+              } else {
+                console.log('No properties found or function is not external');
+              }
             } catch (e) {
-              console.warn('Failed to parse parameters for function:', func.name, e);
-              parsedParameters = {};
-            }
-            
-            // Determine the function type based on the function's properties
-            let type: 'end_call' | 'transfer' | 'custom';
-            if (func.name === 'end_call') {
-              type = 'end_call';
-            } else if (parsedParameters.transferTo) {
-              type = 'transfer';
-            } else {
-              type = 'custom';
+              console.error('Error processing parameters:', e);
+              console.error('Failed parameters data:', func.parameters);
             }
 
             // Create the base config
@@ -610,16 +680,24 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
             // Add type-specific properties
             let config: CustomFunction | TransferFunction | EndCallFunction;
-            if (type === 'custom') {
+            if (func.type === 'custom' || func.is_external) {
               config = {
                 ...baseConfig,
                 url: func.external_config?.url || '',
+                method: func.external_config?.method || 'POST',
+                contentType: func.external_config?.contentType || 'application/json',
                 apiTimeout: func.external_config?.apiTimeout || 120000,
-                parameters: typeof func.parameters === 'string' ? func.parameters : JSON.stringify(func.parameters),
+                parameters: func.parameters,
+                params: params, // Add the parsed params array
                 speakDuringExecution: func.external_config?.speakDuringExecution || false,
                 executionMessage: func.external_config?.executionMessage || '',
               };
-            } else if (type === 'transfer') {
+              console.log('Created custom function config:', {
+                ...config,
+                parameters: typeof config.parameters === 'string' ? JSON.parse(config.parameters) : config.parameters,
+                params: config.params
+              });
+            } else if (func.type === 'transfer' || parsedParameters.transferTo) {
               config = {
                 ...baseConfig,
                 transferTo: parsedParameters.transferTo || '',
@@ -630,11 +708,12 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
             return {
               id: func.id,
-              type,
+              type: func.type || (func.is_external ? 'custom' : 'end_call'),
               config
             };
           });
 
+          console.log('\nFinal transformed functions:', JSON.stringify(transformedFunctions, null, 2));
           setFunctions(transformedFunctions);
         } catch (error) {
           console.error('Error loading agent functions:', error);
@@ -730,19 +809,20 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     }
   };
 
-  const handleAddLabel = (label: string) => {
-    if (label && !agent.labels.includes(label)) {
+  const handleAddLabel = (labelData: { name: string; description: string }) => {
+    if (labelData.name && labelData.description && !agent.labels.some(l => l.name === labelData.name)) {
       setAgent(prev => ({
         ...prev,
-        labels: [...prev.labels, label]
+        labels: [...prev.labels, labelData]
       }));
+      setNewLabel({ name: '', description: '' }); // Reset the form
     }
   };
 
-  const handleRemoveLabel = (label: string) => {
+  const handleRemoveLabel = (labelName: string) => {
     setAgent(prev => ({
       ...prev,
-      labels: prev.labels.filter(l => l !== label)
+      labels: prev.labels.filter(l => l.name !== labelName)
     }));
   };
 
@@ -1451,49 +1531,65 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               </p>
               
               {/* Label Input */}
-              <div className="flex gap-2 mb-4">
-                <input
-                  type="text"
-                  placeholder="Ajouter un label..."
-                  className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const input = e.target as HTMLInputElement;
-                      handleAddLabel(input.value.trim());
-                      input.value = '';
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const input = document.querySelector('input[placeholder="Ajouter un label..."]') as HTMLInputElement;
-                    handleAddLabel(input.value.trim());
-                    input.value = '';
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Ajouter
-                </button>
+              <div className="flex flex-col gap-2 mb-4">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nom du label..."
+                    value={newLabel.name}
+                    onChange={(e) => setNewLabel(prev => ({ ...prev, name: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newLabel.name && newLabel.description) {
+                        e.preventDefault();
+                        handleAddLabel(newLabel);
+                      }
+                    }}
+                    className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Description du label..."
+                    value={newLabel.description}
+                    onChange={(e) => setNewLabel(prev => ({ ...prev, description: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newLabel.name && newLabel.description) {
+                        e.preventDefault();
+                        handleAddLabel(newLabel);
+                      }
+                    }}
+                    className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddLabel(newLabel)}
+                    disabled={!newLabel.name || !newLabel.description}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Ajouter
+                  </button>
+                </div>
               </div>
 
               {/* Labels Display */}
-              <div className="flex flex-wrap gap-2">
-                {agent.labels.map((label, index) => (
-                  <span
+              <div className="flex flex-col gap-2">
+                {(agent.labels || []).map((label, index) => (
+                  <div
                     key={index}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-700"
+                    className="flex items-center justify-between p-2 rounded-lg bg-blue-50 border border-blue-100"
                   >
-                    {label}
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-blue-700">{label.name}</span>
+                      <span className="text-sm text-blue-600">-</span>
+                      <span className="text-sm text-blue-600">{label.description}</span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => handleRemoveLabel(label)}
-                      className="p-0.5 hover:bg-blue-200 rounded-full"
+                      onClick={() => handleRemoveLabel(label.name)}
+                      className="p-1 text-blue-700 hover:bg-blue-100 rounded-full"
                     >
                       <XMarkIcon className="h-4 w-4" />
                     </button>
-                  </span>
+                  </div>
                 ))}
               </div>
             </div>
@@ -2065,6 +2161,44 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                         required
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Méthode HTTP <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={(functionConfig as CustomFunction)?.method || 'POST'}
+                          onChange={(e) => setFunctionConfig({ 
+                            ...functionConfig as CustomFunction,
+                            method: e.target.value as 'GET' | 'POST' | 'PUT' | 'DELETE'
+                          })}
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        >
+                          <option value="POST">POST</option>
+                          <option value="GET">GET</option>
+                          <option value="PUT">PUT</option>
+                          <option value="DELETE">DELETE</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Content Type <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={(functionConfig as CustomFunction)?.contentType || 'application/json'}
+                          onChange={(e) => setFunctionConfig({ 
+                            ...functionConfig as CustomFunction,
+                            contentType: e.target.value
+                          })}
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        >
+                          <option value="application/json">application/json</option>
+                          <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>
+                          <option value="multipart/form-data">multipart/form-data</option>
+                          <option value="text/plain">text/plain</option>
+                        </select>
+                      </div>
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Délai d'expiration API (Optionnel)</label>
                       <input
@@ -2080,40 +2214,193 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Paramètres (Optionnel)</label>
-                      <p className="mt-1 text-sm text-gray-500 mb-2">
-                        JSON schema qui définit le format dans lequel le LLM retournera. Veuillez consulter la documentation.
-                      </p>
-                      <textarea
-                        value={(functionConfig as CustomFunction)?.parameters || ''}
-                        onChange={(e) => setFunctionConfig({ 
-                          ...functionConfig as CustomFunction,
-                          parameters: e.target.value 
-                        })}
-                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm h-32 bg-gray-900 text-gray-100"
-                        placeholder="Enter JSON Schema here..."
-                      />
-                      <div className="mt-2 flex gap-2">
+                      <div className="flex items-center justify-between mb-4">
+                        <label className="block text-sm font-medium text-gray-700">Paramètres de la fonction</label>
                         <button
                           type="button"
-                          onClick={() => setFunctionConfig({ 
-                            ...functionConfig as CustomFunction,
-                            parameters: JSON.stringify({
-                              name: "search_product",
-                              description: "Search for a product in the catalog",
-                              properties: {
-                                query: {
-                                  type: "string",
-                                  description: "Search query"
-                                }
-                              },
-                              required: ["query"]
-                            }, null, 2)
-                          })}
-                          className="px-3 py-1 text-sm bg-gray-900 text-white rounded-full hover:bg-gray-800"
+                          onClick={() => {
+                            const currentConfig = functionConfig as CustomFunction;
+                            const newParam: Parameter = {
+                              name: '',
+                              type: 'string',
+                              description: '',
+                              required: true
+                            };
+                            setFunctionConfig({
+                              ...currentConfig,
+                              params: [...(currentConfig.params || []), newParam]
+                            });
+                          }}
+                          className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
                         >
-                          example
+                          <PlusIcon className="h-4 w-4 mr-1" />
+                          Ajouter un paramètre
                         </button>
+                      </div>
+                      <div className="space-y-4">
+                        {(functionConfig as CustomFunction)?.params?.map((param, index) => (
+                          <div key={index} className="border rounded-md p-4 relative">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentConfig = functionConfig as CustomFunction;
+                                setFunctionConfig({
+                                  ...currentConfig,
+                                  params: currentConfig.params?.filter((_, i) => i !== index)
+                                });
+                              }}
+                              className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600"
+                            >
+                              <XMarkIcon className="h-5 w-5" />
+                            </button>
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Nom <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={param.name}
+                                  onChange={(e) => {
+                                    const currentConfig = functionConfig as CustomFunction;
+                                    const updatedParams = [...(currentConfig.params || [])];
+                                    updatedParams[index] = { ...param, name: e.target.value };
+                                    
+                                    // Update both params array and parameters string
+                                    const newParams = {
+                                      name: currentConfig.name || '',
+                                      description: currentConfig.description || '',
+                                      properties: Object.fromEntries(
+                                        updatedParams.map(p => [
+                                          p.name,
+                                          { type: p.type, description: p.description }
+                                        ])
+                                      ),
+                                      required: updatedParams.filter(p => p.required).map(p => p.name)
+                                    };
+                                    
+                                    setFunctionConfig({
+                                      ...currentConfig,
+                                      params: updatedParams,
+                                      parameters: JSON.stringify(newParams, null, 2)
+                                    });
+                                  }}
+                                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                                  placeholder="Ex: query, amount, date, etc."
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Type <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                  value={param.type}
+                                  onChange={(e) => {
+                                    const currentConfig = functionConfig as CustomFunction;
+                                    const updatedParams = [...(currentConfig.params || [])];
+                                    updatedParams[index] = { ...param, type: e.target.value };
+                                    
+                                    // Update both params array and parameters string
+                                    const newParams = {
+                                      name: currentConfig.name || '',
+                                      description: currentConfig.description || '',
+                                      properties: Object.fromEntries(
+                                        updatedParams.map(p => [
+                                          p.name,
+                                          { type: p.type, description: p.description }
+                                        ])
+                                      ),
+                                      required: updatedParams.filter(p => p.required).map(p => p.name)
+                                    };
+                                    
+                                    setFunctionConfig({
+                                      ...currentConfig,
+                                      params: updatedParams,
+                                      parameters: JSON.stringify(newParams, null, 2)
+                                    });
+                                  }}
+                                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                                >
+                                  <option value="string">String</option>
+                                  <option value="number">Number</option>
+                                  <option value="integer">Integer</option>
+                                  <option value="boolean">Boolean</option>
+                                  <option value="array">Array</option>
+                                  <option value="object">Object</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="mb-4">
+                              <label className="block text-sm font-medium text-gray-700">
+                                Description <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={param.description}
+                                onChange={(e) => {
+                                  const currentConfig = functionConfig as CustomFunction;
+                                  const updatedParams = [...(currentConfig.params || [])];
+                                  updatedParams[index] = { ...param, description: e.target.value };
+                                  
+                                  // Update both params array and parameters string
+                                  const newParams = {
+                                    name: currentConfig.name || '',
+                                    description: currentConfig.description || '',
+                                    properties: Object.fromEntries(
+                                      updatedParams.map(p => [
+                                        p.name,
+                                        { type: p.type, description: p.description }
+                                      ])
+                                    ),
+                                    required: updatedParams.filter(p => p.required).map(p => p.name)
+                                  };
+                                  
+                                  setFunctionConfig({
+                                    ...currentConfig,
+                                    params: updatedParams,
+                                    parameters: JSON.stringify(newParams, null, 2)
+                                  });
+                                }}
+                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                                placeholder="Description du paramètre"
+                              />
+                            </div>
+                            <div>
+                              <label className="flex items-center">
+                                <input
+                                  type="checkbox"
+                                  checked={param.required}
+                                  onChange={(e) => {
+                                    const currentConfig = functionConfig as CustomFunction;
+                                    const updatedParams = [...(currentConfig.params || [])];
+                                    updatedParams[index] = { ...param, required: e.target.checked };
+                                    
+                                    // Update both params array and parameters string
+                                    const newParams = {
+                                      name: currentConfig.name || '',
+                                      description: currentConfig.description || '',
+                                      properties: Object.fromEntries(
+                                        updatedParams.map(p => [
+                                          p.name,
+                                          { type: p.type, description: p.description }
+                                        ])
+                                      ),
+                                      required: updatedParams.filter(p => p.required).map(p => p.name)
+                                    };
+                                    
+                                    setFunctionConfig({
+                                      ...currentConfig,
+                                      params: updatedParams,
+                                      parameters: JSON.stringify(newParams, null, 2)
+                                    });
+                                  }}
+                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                />
+                                <span className="ml-2 text-sm text-gray-700">Paramètre requis</span>
+                              </label>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                     <div className="space-y-2">
