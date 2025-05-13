@@ -191,6 +191,14 @@ export default function CreateCampaignPage() {
         apiFormData.append('scheduled_date', selectedDate);
       }
 
+      // Log form data being sent
+      console.log('Creating campaign with the following data:');
+      for (const [key, value] of apiFormData.entries()) {
+        console.log(`${key}: ${value}`);
+      }
+      console.log('max_retries value:', campaign.max_retries);
+      console.log('retry_frequency value:', campaign.retry_frequency);
+      
       console.log('Creating campaign with status:', status);
       
       // Show loading toast without auto-dismiss
