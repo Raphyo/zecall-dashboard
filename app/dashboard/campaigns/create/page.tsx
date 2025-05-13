@@ -160,7 +160,7 @@ export default function CreateCampaignPage() {
       }
 
       // Check if it's within business hours (10:00-13:00 and 14:00-21:00 French time)
-      if (hours < 10 || hours === 13 || hours >= 21) {
+      if (hours < 10 || hours === 13 || hours >= 23) {
         toast.error(
           <div className="text-sm">
             <p className="font-medium">Horaires non autorisés</p>
