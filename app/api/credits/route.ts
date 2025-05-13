@@ -13,13 +13,10 @@ export async function GET() {
       );
     }
 
-    // Validate backend URL
     if (!ANALYTICS_URL) {
       throw new Error('BACKEND_API_URL is not configured');
     }
 
-    // Make request to backend API
-    console.log('🔵 Fetching credits from:', `${ANALYTICS_URL}/api/credits?user_id=${session.user.id}`);
     const response = await fetch(`${ANALYTICS_URL}/api/credits?user_id=${session.user.id}`);
     const data = await response.json();
 
@@ -27,7 +24,12 @@ export async function GET() {
       throw new Error(data.detail || 'Failed to fetch credits');
     }
 
-    return NextResponse.json({ credits: data.credits });
+    return NextResponse.json({
+      credits: {
+        balance: Number(data.credits?.balance || 0),
+        minutes_balance: Number(data.credits?.minutes_balance || 0)
+      }
+    }); 
   } catch (error) {
     console.error('Failed to fetch credits:', error);
     return NextResponse.json(
@@ -49,13 +51,10 @@ export async function POST() {
       );
     }
 
-    // Validate backend URL
     if (!ANALYTICS_URL) {
       throw new Error('BACKEND_API_URL is not configured');
     }
 
-    // Make request to backend API
-    console.log('🔵 Fetching transactions from:', `${ANALYTICS_URL}/api/credits/transactions?user_id=${session.user.id}`);
     const response = await fetch(`${ANALYTICS_URL}/api/credits/transactions?user_id=${session.user.id}`);
     const data = await response.json();
 
