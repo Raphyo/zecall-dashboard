@@ -3,16 +3,62 @@
 import Link from 'next/link';
 import NavLinks from '@/app/ui/dashboard/nav-links';
 import AcmeLogo from '@/app/ui/acme-logo';
-import { PowerIcon, UserCircleIcon } from '@heroicons/react/24/outline';
-import { signOut, useSession } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
+import ProfileMenu from '@/app/components/ProfileMenu';
+import { useState, useEffect } from 'react';
+import { CurrencyEuroIcon } from '@heroicons/react/24/outline';
+import SubscriptionPackagesModal from '@/app/components/SubscriptionPackagesModal';
+import { ClockIcon } from '@heroicons/react/24/outline';
 
 export default function SideNav() {
   const { data: session } = useSession();
-  const handleSignOut = async () => {
-    await signOut({ 
-      redirect: true,
-      callbackUrl: '/login'
-    });
+  const [credits, setCredits] = useState({ balance: 0, minutes: 0 });
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+
+  // Add polling interval for credit updates
+  useEffect(() => {
+    fetchCredits(); // Initial fetch
+
+    // Set up polling interval (every 30 seconds)
+    const intervalId = setInterval(fetchCredits, 30000);
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(intervalId);
+  }, []); // Empty dependency array means this effect runs once on mount
+
+  // Add event listener for credit updates
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchCredits(); // Fetch credits when tab becomes visible
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Cleanup event listener
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  const fetchCredits = async () => {
+    try {
+      const response = await fetch('/api/credits');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch credits');
+      }
+
+      console.log('Credits raw response:', data);
+      setCredits({
+        balance: data.credits.balance,
+        minutes: data.credits.minutes_balance
+      });
+    } catch (error) {
+      console.error('Error fetching credits:', error);
+    }
   };
 
   return (
@@ -28,18 +74,38 @@ export default function SideNav() {
       <div className="flex grow flex-row justify-between space-x-2 md:flex-col md:space-x-0 md:space-y-2">
         <NavLinks />
         <div className="hidden h-auto w-full grow rounded-md bg-gray-50 md:block"></div>
-        <div className="hidden md:flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
-          <UserCircleIcon className="w-5 h-5" />
-          <span className="truncate">{session?.user?.email}</span>
+        <div className="hidden md:flex flex-col space-y-4 px-3 py-2">
+          {/* Credits and Subscribe Button */}
+          <div className="flex flex-col space-y-2">
+            <div className="flex items-center bg-blue-50 px-4 py-2 rounded-md border border-blue-100">
+              <CurrencyEuroIcon className="h-5 w-5 text-blue-600 mr-2" />
+              <span className="text-sm font-medium text-blue-900">{credits.balance.toFixed(2)}€</span>
+            </div>
+            {/* Minutes display temporarily hidden
+            <div className="flex items-center bg-purple-50 px-4 py-2 rounded-md border border-purple-100">
+              <ClockIcon className="h-5 w-5 text-purple-600 mr-2" />
+              <span className="text-sm font-medium text-purple-900">{credits.minutes} minutes</span>
+            </div>
+            */}
+            <button
+              // Temporarily disabled - TODO: Re-enable when ready
+              disabled={true}
+              onClick={() => setIsSubscriptionModalOpen(true)}
+              className="w-full py-2 px-4 bg-gradient-to-r from-blue-600 via-blue-500 to-purple-600 text-white font-medium rounded-lg shadow-sm transition-opacity duration-200 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Acheter des crédits
+            </button>
+          </div>
+          {/* Profile Menu */}
+          {session?.user?.email && (
+            <ProfileMenu email={session.user.email} />
+          )}
         </div>
-        <button
-          onClick={handleSignOut}
-          className="flex h-[48px] grow items-center justify-center gap-2 rounded-md bg-gray-50 p-3 text-sm font-medium hover:bg-sky-100 hover:text-blue-600 md:flex-none md:justify-start md:p-2 md:px-3"
-        >
-          <PowerIcon className="w-6" />
-          <div className="hidden md:block">Déconnexion</div>
-        </button>
       </div>
+      <SubscriptionPackagesModal
+        isOpen={isSubscriptionModalOpen}
+        onClose={() => setIsSubscriptionModalOpen(false)}
+      />
     </div>
   );
 }

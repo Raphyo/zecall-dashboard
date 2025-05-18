@@ -43,19 +43,21 @@ export function Filters({ onFilterChange }: FiltersProps) {
   useEffect(() => {
     const loadData = async () => {
       try {
+        if (!session?.user?.id) return;
+        
         // Load campaigns
-        const campaignsData = await getCampaigns(session?.user?.email);
+        const campaignsData = await getCampaigns(session.user.id);
         setCampaigns(campaignsData);
 
         // Load calls to get unique categories
-        const calls = await getCalls(session?.user?.email);
+        const calls = await getCalls(session.user.id);
         const uniqueCategories = [...new Set(calls.map(call => call.call_category))].filter(Boolean);
         setCategories(uniqueCategories);
       } catch (err) {
         console.error('Error loading data:', err);
       }
     };
-    if (session?.user?.email) {
+    if (session?.user?.id) {
       loadData();
     }
   }, [session]);
