@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { PencilIcon, TrashIcon, PlusIcon, PhoneIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { PencilIcon, TrashIcon, PlusIcon, PhoneIcon, XMarkIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
-import { getAIAgents, deleteAIAgent, getAgentFunctions, removeAgentFunction } from '@/app/lib/api';
+import { getAIAgents, deleteAIAgent, getAgentFunctions, removeAgentFunction, createAIAgent } from '@/app/lib/api';
 import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 import { EmptyState } from './empty-state';
@@ -29,6 +29,21 @@ interface AIAgent {
   llm_prompt: string;
   created_at: string;
   user_id: string;
+  allow_interruptions?: boolean;
+  ai_starts_conversation?: boolean;
+  silence_detection?: boolean;
+  silence_timeout?: number;
+  max_retries?: number;
+  max_call_duration?: number;
+  variables?: any[];
+  labels?: { name: string; description: string }[];
+  vad_stop_secs?: number;
+  wake_phrase_detection?: {
+    enabled: boolean;
+    phrases: string[];
+    keepalive_timeout: number;
+  };
+  post_call_actions?: any[];
 }
 
 
@@ -241,6 +256,56 @@ export function AgentsList() {
     setHasMessages(true);
   };
 
+  const handleDuplicate = async (agent: AIAgent) => {
+    try {
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+
+      // Create a FormData object for the new agent
+      const formData = new FormData();
+      formData.append('name', `${agent.name} (copie)`);
+      formData.append('voice_name', agent.voice_name);
+      formData.append('language', agent.language);
+      formData.append('llm_prompt', agent.llm_prompt);
+      formData.append('background_audio', agent.background_audio);
+      formData.append('allow_interruptions', String(agent.allow_interruptions ?? false));
+      formData.append('ai_starts_conversation', String(agent.ai_starts_conversation ?? false));
+      formData.append('silence_detection', String(agent.silence_detection ?? false));
+      formData.append('silence_timeout', String(agent.silence_timeout ?? 5));
+      formData.append('max_retries', String(agent.max_retries ?? 3));
+      formData.append('max_call_duration', String(agent.max_call_duration ?? 30));
+      formData.append('labels', JSON.stringify(agent.labels ?? []));
+      formData.append('vad_stop_secs', String(agent.vad_stop_secs ?? 0.8));
+      formData.append('wake_phrase_detection', JSON.stringify(agent.wake_phrase_detection ?? {
+        enabled: false,
+        phrases: [],
+        keepalive_timeout: 30
+      }));
+
+      // Filter out built-in variables and convert to dynamic_variables
+      const dynamicVariables = (agent.variables ?? []).filter(v => !v.isBuiltIn);
+      formData.append('dynamic_variables', JSON.stringify(dynamicVariables));
+
+      // Create the duplicated agent
+      const duplicatedAgent = await createAIAgent(formData, session.user.id);
+
+      // Update the UI with the new agent
+      setAgents(prev => [...prev, duplicatedAgent]);
+      
+      setToast({
+        message: 'Agent dupliqué avec succès',
+        type: 'success'
+      });
+    } catch (error: any) {
+      console.error('Error duplicating agent:', error);
+      setToast({
+        message: 'Erreur lors de la duplication de l\'agent',
+        type: 'error'
+      });
+    }
+  };
+
   if (status === 'loading' || loading) {
     return <AgentsListSkeleton />;
   }
@@ -263,6 +328,32 @@ export function AgentsList() {
           >
             <div className="flex justify-between items-start mb-4">
               <h3 className="text-lg font-semibold text-gray-900">{agent.name}</h3>
+              <button
+                onClick={() => hasMessages ? handleHangup() : handleWebCall(agent.id)}
+                disabled={isCallLoading === agent.id || (activeCallId === agent.id && !hasMessages)}
+                className={`inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md ${
+                  hasMessages && activeCallId === agent.id
+                    ? 'text-red-700 bg-red-100 hover:bg-red-200'
+                    : 'text-green-700 bg-green-100 hover:bg-green-200'
+                } disabled:opacity-50`}
+              >
+                {(isCallLoading === agent.id || (activeCallId === agent.id && !hasMessages)) ? (
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                ) : hasMessages && activeCallId === agent.id ? (
+                  <>
+                    <XMarkIcon className="h-4 w-4 mr-2" />
+                    Raccrocher
+                  </>
+                ) : (
+                  <>
+                    <PhoneIcon className="h-4 w-4 mr-2" />
+                    Appeler l'agent
+                  </>
+                )}
+              </button>
             </div>
 
             <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 flex-grow">
@@ -298,6 +389,13 @@ export function AgentsList() {
                 Modifier
               </button>
               <button
+                onClick={() => handleDuplicate(agent)}
+                className="inline-flex justify-center items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                title="Dupliquer l'agent"
+              >
+                <DocumentDuplicateIcon className="h-4 w-4" />
+              </button>
+              <button
                 onClick={() => {
                   console.log('Delete button clicked in UI for agent:', agent.id);
                   handleDelete(agent.id);
@@ -305,26 +403,6 @@ export function AgentsList() {
                 className="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200"
               >
                 <TrashIcon className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => hasMessages ? handleHangup() : handleWebCall(agent.id)}
-                disabled={isCallLoading === agent.id || (activeCallId === agent.id && !hasMessages)}
-                className={`inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md ${
-                  hasMessages && activeCallId === agent.id
-                    ? 'text-red-700 bg-red-100 hover:bg-red-200'
-                    : 'text-green-700 bg-green-100 hover:bg-green-200'
-                } disabled:opacity-50`}
-              >
-                {(isCallLoading === agent.id || (activeCallId === agent.id && !hasMessages)) ? (
-                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                ) : hasMessages && activeCallId === agent.id ? (
-                  <XMarkIcon className="h-4 w-4" />
-                ) : (
-                  <PhoneIcon className="h-4 w-4" />
-                )}
               </button>
             </div>
           </div>

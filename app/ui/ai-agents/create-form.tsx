@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon, InformationCircleIcon, PlusIcon, PhoneIcon, ArrowPathRoundedSquareIcon, Squares2X2Icon, TrashIcon, PencilIcon, TagIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { LanguageIcon, DocumentIcon, UserIcon, CommandLineIcon, SpeakerWaveIcon, MusicalNoteIcon, PlayIcon, PauseIcon, InformationCircleIcon, PlusIcon, PhoneIcon, ArrowPathRoundedSquareIcon, Squares2X2Icon, TrashIcon, PencilIcon, TagIcon, XMarkIcon, EnvelopeIcon, BellIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { createAIAgent, createAgentFunction, updateAgentFunction, removeAgentFunction, getAgentFunctions, ORCHESTRATOR_URL, updateAIAgent, getAIAgents } from '@/app/lib/api';
 import { Toast } from '../toast';
@@ -34,10 +34,20 @@ interface ParsedParameters {
 }
 
 // Update the existing interfaces
+interface Parameter {
+  name: string;
+  type: string;
+  description: string;
+  required: boolean;
+}
+
 interface CustomFunction extends BaseConfig {
   url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  contentType: string;
   apiTimeout?: number;
   parameters?: string;
+  params: Parameter[];
   speakDuringExecution: boolean;
   executionMessage?: string;
 }
@@ -48,6 +58,41 @@ interface TransferFunction extends BaseConfig {
 
 interface EndCallFunction extends BaseConfig {
   // No additional properties needed
+}
+
+// Add new interfaces for post-call actions
+interface PostCallAction extends BaseConfig {
+  type: 'sms' | 'email' | 'api' | 'notification';
+  config: SMSConfig | EmailConfig | APIConfig | NotificationConfig;
+}
+
+interface SMSConfig {
+  phoneNumber: string;
+  message: string;
+  variables?: string[];
+}
+
+interface EmailConfig {
+  to: string;
+  subject: string;
+  body: string;
+  variables?: string[];
+}
+
+interface APIConfig {
+  url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  headers?: Record<string, string>;
+  body?: string;
+  variables?: string[];
+}
+
+interface NotificationConfig {
+  type: 'sms' | 'email' | 'both';
+  phoneNumber?: string;
+  email?: string;
+  message: string;
+  variables?: string[];
 }
 
 interface AgentFunction {
@@ -71,7 +116,15 @@ interface AIAgent {
   max_call_duration: number;
   knowledge_base_path?: string;
   variables?: Variable[];
-  labels?: string[];
+  labels?: { name: string; description: string }[];
+  vad_stop_secs?: number;
+  post_call_actions?: PostCallAction[];
+  wake_phrase_detection?: {
+    enabled: boolean;
+    phrases: string[];
+    keepalive_timeout: number;
+  };
+  with_tools?: boolean;  // Add the new field
 }
 
 export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; initialData?: AIAgent }) {
@@ -94,7 +147,14 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     maxRetries: initialData?.max_retries || 3,
     maxCallDuration: initialData?.max_call_duration || 30,
     variables: initialData?.variables || [...builtInVariables],
-    labels: initialData?.labels || []
+    labels: Array.isArray(initialData?.labels) ? initialData.labels : [],
+    postCallActions: initialData?.post_call_actions || [],
+    vadStopSecs: initialData?.vad_stop_secs || 0.8,
+    wakePhraseDetection: initialData?.wake_phrase_detection || {
+      enabled: false,
+      phrases: [],
+      keepalive_timeout: 30
+    }
   });
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string>('');
@@ -113,6 +173,11 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   const [editingVariable, setEditingVariable] = useState<{ index: number; variable: Variable } | null>(null);
   const [showTransferError, setShowTransferError] = useState(false);
   const [showEndCallDescriptionError, setShowEndCallDescriptionError] = useState(false);
+  const [showPostCallActionModal, setShowPostCallActionModal] = useState(false);
+  const [selectedPostCallActionType, setSelectedPostCallActionType] = useState<'sms' | 'email' | 'api' | 'notification' | null>(null);
+  const [postCallActionConfig, setPostCallActionConfig] = useState<SMSConfig | EmailConfig | APIConfig | NotificationConfig | null>(null);
+  const [editingPostCallAction, setEditingPostCallAction] = useState<{ index: number; action: PostCallAction } | null>(null);
+  const [newLabel, setNewLabel] = useState({ name: '', description: '' });
 
   const ambientSounds = [
     { id: 'none', name: 'Aucun', url: null },
@@ -212,6 +277,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
     setIsSubmitting(true);
     try {
+      console.log('Debug - Initial vad_stop_secs value:', agent.vadStopSecs);
       const formData = new FormData();
       formData.append('name', agent.name);
       formData.append('voice_name', agent.voiceName);
@@ -225,7 +291,18 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       formData.append('max_retries', agent.maxRetries.toString());
       formData.append('max_call_duration', agent.maxCallDuration.toString());
       formData.append('labels', JSON.stringify(agent.labels));
+      formData.append('vad_stop_secs', agent.vadStopSecs.toString());
+      formData.append('wake_phrase_detection', JSON.stringify(agent.wakePhraseDetection));
       
+      // Add with_tools field based on whether there are any functions
+      const hasTools = functions.length > 0;
+      formData.append('with_tools', hasTools.toString());
+
+      console.log('Debug - FormData after appending vad_stop_secs:');
+      for (const [key, value] of formData.entries()) {
+        console.log(`${key}: ${value}`);
+      }
+
       // Filter out built-in variables and convert to dynamic_variables
       const dynamicVariables = agent.variables.filter(v => !v.isBuiltIn);
       formData.append('dynamic_variables', JSON.stringify(dynamicVariables));
@@ -242,8 +319,16 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       let savedAgent: AIAgent;
       if (agentId) {
         savedAgent = await updateAIAgent(agentId, formData);
+        setToast({
+          message: 'Agent mis à jour avec succès',
+          type: 'success'
+        });
       } else {
         savedAgent = await createAIAgent(formData, session.user.id);
+        setToast({
+          message: 'Agent créé avec succès',
+          type: 'success'
+        });
       }
 
       // Create or update functions for the agent
@@ -263,19 +348,40 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
             const customConfig = func.config as CustomFunction;
             functionData.is_external = true;
             try {
-              // Parse and re-stringify to ensure valid JSON
-              const params = customConfig.parameters ? JSON.parse(customConfig.parameters) : {};
-              functionData.parameters = JSON.stringify(params);
-            } catch (e) {
-              console.error('Error parsing parameters JSON:', e);
-              functionData.parameters = '{}';
+              // Construct parameters JSON without the type field
+              const paramsSchema = {
+                properties: Object.fromEntries(
+                  (customConfig.params || []).map(param => [
+                    param.name,
+                    {
+                      type: param.type,
+                      description: param.description
+                    }
+                  ])
+                ),
+                required: (customConfig.params || [])
+                  .filter(param => param.required)
+                  .map(param => param.name)
+              };
+              
+              functionData.parameters = JSON.stringify(paramsSchema);
+              functionData.external_config = {
+                url: customConfig.url,
+                method: customConfig.method || 'POST',
+                contentType: customConfig.contentType,
+                apiTimeout: customConfig.apiTimeout || 120000,
+                speakDuringExecution: customConfig.speakDuringExecution,
+                executionMessage: customConfig.executionMessage || ''
+              };
+            } catch (e: any) {
+              console.error('Error constructing parameters JSON:', e);
+              setToast({
+                message: `Erreur de format JSON pour la fonction ${func.config.name}: ${e.message}`,
+                type: 'error'
+              });
+              setIsSubmitting(false);
+              return;
             }
-            functionData.external_config = {
-              url: customConfig.url,
-              apiTimeout: customConfig.apiTimeout || 120000,
-              speakDuringExecution: customConfig.speakDuringExecution,
-              executionMessage: customConfig.executionMessage || ''
-            };
           } else if (func.type === 'transfer') {
             functionData.parameters = JSON.stringify({
               transferTo: (func.config as TransferFunction).transferTo
@@ -314,7 +420,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       // Send webhook to update configuration
       try {
         const webhookResponse = await fetch(
-          `${ORCHESTRATOR_URL}/webhook/config-update?agent_id=${encodeURIComponent(savedAgent.id)}`,
+          `${ORCHESTRATOR_URL}/webhook/config-update?agent_id=${encodeURIComponent(savedAgent.id)}&user_id=${encodeURIComponent(session.user.id)}`,
           {
             method: 'POST',
             headers: {
@@ -343,8 +449,9 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
       router.push('/dashboard/ai-agents');
     } catch (error: any) {
+      console.error('Error saving agent:', error);
       setToast({
-        message: `Error: ${error.message || 'An error occurred while saving the agent'}`,
+        message: `Erreur: ${error.message || 'Une erreur est survenue lors de l\'enregistrement de l\'agent'}`,
         type: 'error'
       });
     } finally {
@@ -353,6 +460,8 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
   };
 
   const handleEditFunction = (index: number, func: AgentFunction) => {
+    console.log('Editing function:', { index, func });
+    
     // Ensure we have a valid type
     if (!func.type) {
       if (func.config.name === 'end_call') {
@@ -367,6 +476,12 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     // First set the editing state
     const newEditingState = { index, function: func };
     const newFunctionConfig = { ...func.config };
+    
+    console.log('Setting function edit state:', {
+      editingState: newEditingState,
+      functionConfig: newFunctionConfig,
+      type: func.type
+    });
     
     // Ensure we set all states in the correct order
     setEditingFunction(newEditingState);
@@ -508,30 +623,54 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
       if (agentId && session?.user?.id) {
         try {
           const fetchedFunctions = await getAgentFunctions(agentId, session.user.id);
+          console.log('Fetched functions from API:', JSON.stringify(fetchedFunctions, null, 2));
           
           // Transform the fetched functions to match our local format
           const transformedFunctions = fetchedFunctions.map((func: any) => {
+            console.log('\nProcessing function:', func.name);
+            console.log('Raw function data:', {
+              is_external: func.is_external,
+              parameters: func.parameters,
+              external_config: func.external_config
+            });
+            
             // Safely parse parameters
-            let parsedParameters: ParsedParameters = {};
+            let parsedParameters: any = {};
+            let params: Parameter[] = [];
             try {
+              // Handle both string and object parameters
               if (typeof func.parameters === 'string') {
+                console.log('Raw parameters string:', func.parameters);
                 parsedParameters = JSON.parse(func.parameters || '{}');
-              } else if (func.parameters && typeof func.parameters === 'object') {
+              } else if (typeof func.parameters === 'object') {
+                console.log('Raw parameters object:', func.parameters);
                 parsedParameters = func.parameters;
               }
+              console.log('Parsed parameters object:', parsedParameters);
+              
+              // Convert parameters schema to params array for custom functions
+              if (func.is_external && parsedParameters.properties) {
+                console.log('Properties found:', parsedParameters.properties);
+                console.log('Required fields:', parsedParameters.required);
+                
+                params = Object.entries(parsedParameters.properties).map(([name, prop]: [string, any]) => {
+                  const param = {
+                    name,
+                    type: prop.type,
+                    description: prop.description,
+                    required: parsedParameters.required?.includes(name) || false
+                  };
+                  console.log('Created parameter:', param);
+                  return param;
+                });
+                
+                console.log('Final params array:', params);
+              } else {
+                console.log('No properties found or function is not external');
+              }
             } catch (e) {
-              console.warn('Failed to parse parameters for function:', func.name, e);
-              parsedParameters = {};
-            }
-            
-            // Determine the function type based on the function's properties
-            let type: 'end_call' | 'transfer' | 'custom';
-            if (func.name === 'end_call') {
-              type = 'end_call';
-            } else if (parsedParameters.transferTo) {
-              type = 'transfer';
-            } else {
-              type = 'custom';
+              console.error('Error processing parameters:', e);
+              console.error('Failed parameters data:', func.parameters);
             }
 
             // Create the base config
@@ -543,16 +682,24 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
             // Add type-specific properties
             let config: CustomFunction | TransferFunction | EndCallFunction;
-            if (type === 'custom') {
+            if (func.type === 'custom' || func.is_external) {
               config = {
                 ...baseConfig,
                 url: func.external_config?.url || '',
+                method: func.external_config?.method || 'POST',
+                contentType: func.external_config?.contentType || 'application/json',
                 apiTimeout: func.external_config?.apiTimeout || 120000,
-                parameters: typeof func.parameters === 'string' ? func.parameters : JSON.stringify(func.parameters),
+                parameters: func.parameters,
+                params: params, // Add the parsed params array
                 speakDuringExecution: func.external_config?.speakDuringExecution || false,
                 executionMessage: func.external_config?.executionMessage || '',
               };
-            } else if (type === 'transfer') {
+              console.log('Created custom function config:', {
+                ...config,
+                parameters: typeof config.parameters === 'string' ? JSON.parse(config.parameters) : config.parameters,
+                params: config.params
+              });
+            } else if (func.type === 'transfer' || parsedParameters.transferTo) {
               config = {
                 ...baseConfig,
                 transferTo: parsedParameters.transferTo || '',
@@ -563,11 +710,12 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
             return {
               id: func.id,
-              type,
+              type: func.type || (func.is_external ? 'custom' : 'end_call'),
               config
             };
           });
 
+          console.log('\nFinal transformed functions:', JSON.stringify(transformedFunctions, null, 2));
           setFunctions(transformedFunctions);
         } catch (error) {
           console.error('Error loading agent functions:', error);
@@ -663,19 +811,43 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     }
   };
 
-  const handleAddLabel = (label: string) => {
-    if (label && !agent.labels.includes(label)) {
+  const handleAddLabel = (labelData: { name: string; description: string }) => {
+    if (labelData.name && labelData.description && !agent.labels.some(l => l.name === labelData.name)) {
       setAgent(prev => ({
         ...prev,
-        labels: [...prev.labels, label]
+        labels: [...prev.labels, labelData]
       }));
+      setNewLabel({ name: '', description: '' }); // Reset the form
     }
   };
 
-  const handleRemoveLabel = (label: string) => {
+  const handleRemoveLabel = (labelName: string) => {
     setAgent(prev => ({
       ...prev,
-      labels: prev.labels.filter(l => l !== label)
+      labels: prev.labels.filter(l => l.name !== labelName)
+    }));
+  };
+
+  const handleEditPostCallAction = (index: number, action: PostCallAction) => {
+    setEditingPostCallAction({ index, action });
+    setSelectedPostCallActionType(action.type);
+    setPostCallActionConfig(action.config);
+    setShowPostCallActionModal(true);
+  };
+
+  const handleDeletePostCallAction = (index: number) => {
+    setAgent(prev => ({
+      ...prev,
+      postCallActions: prev.postCallActions.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleTogglePostCallAction = (index: number) => {
+    setAgent(prev => ({
+      ...prev,
+      postCallActions: prev.postCallActions.map((action, i) =>
+        i === index ? { ...action, active: !action.active } : action
+      )
     }));
   };
 
@@ -879,6 +1051,88 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
             </div>
           </div>
 
+          {/* Variables Section */}
+          <div className="p-6 border-t border-gray-100">
+            <div className="flex items-center mb-6">
+              <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
+              <h2 className="text-lg font-medium">Variables</h2>
+            </div>
+            <div>
+              <p className="mt-1 text-sm text-gray-500 mb-4">
+                Gérez les variables qui seront disponibles pendant l'appel. Les variables intégrées sont automatiquement disponibles.
+                Pour utiliser une variable dans le prompt, entourez-la d'accolades, par exemple : {'{from_number}'} ou {'{ma_variable}'}.
+              </p>
+
+              {/* Variables List */}
+              <div className="space-y-3 mb-4">
+                {agent.variables.map((variable, index) => (
+                  <div 
+                    key={index} 
+                    className={`flex items-center justify-between p-3 border rounded-md ${
+                      !variable.isBuiltIn ? 'cursor-pointer hover:bg-gray-50' : ''
+                    }`}
+                    onClick={() => handleEditVariable(index, variable)}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div>
+                        <p className="font-medium text-sm">{variable.name}</p>
+                        <p className="text-xs text-gray-500">Type: {variable.type}</p>
+                      </div>
+                      {variable.source && (
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          variable.source === 'built-in' 
+                            ? 'bg-blue-100 text-blue-800'
+                            : variable.source === 'CSV input'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {variable.source}
+                        </span>
+                      )}
+                    </div>
+                    {!variable.isBuiltIn && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAgent({
+                            ...agent,
+                            variables: agent.variables.filter((_, i) => i !== index)
+                          });
+                        }}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-full"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Add Variable Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  // Initialize with a default new variable
+                  setEditingVariable({
+                    index: -1,
+                    variable: {
+                      name: '',
+                      type: 'String',
+                      source: 'CSV input',
+                      isBuiltIn: false
+                    }
+                  });
+                  setShowVariableModal(true);
+                }}
+                className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                <PlusIcon className="h-5 w-5 mr-2" />
+                Ajouter une variable
+              </button>
+            </div>
+          </div>
+
           {/* LLM Prompt Section */}
           <div className="p-6 border-t border-gray-100">
             <div className="flex items-center mb-6">
@@ -888,17 +1142,56 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
             <div>
               <p className="mt-1 text-sm text-gray-500 mb-4">
                 Le prompt vous permettra de guider votre agent IA dans le déroulement de l'appel.
+                Utilisez les variables disponibles ci-dessous ou commencez à taper pour voir les suggestions.
               </p>
-              <textarea
-                id="prompt"
-                name="prompt"
-                rows={4}
-                value={agent.llmPrompt}
-                onChange={(e) => setAgent(prev => ({ ...prev, llmPrompt: e.target.value }))}
-                className="mt-2 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                placeholder="Entrez votre prompt ici..."
-                required
-              />
+              <div className="relative">
+                <textarea
+                  id="prompt"
+                  name="prompt"
+                  rows={4}
+                  value={agent.llmPrompt}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setAgent(prev => ({ ...prev, llmPrompt: newValue }));
+                  }}
+                  className="mt-2 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  placeholder="Entrez votre prompt ici..."
+                  required
+                />
+              </div>
+              {/* Quick access to variables */}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {agent.variables.map((variable, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => {
+                      const textarea = document.getElementById('prompt') as HTMLTextAreaElement;
+                      if (textarea) {
+                        const cursorPos = textarea.selectionStart;
+                        const textBefore = textarea.value.substring(0, cursorPos);
+                        const textAfter = textarea.value.substring(cursorPos);
+                        const newValue = textBefore + '{' + variable.name + '}' + textAfter;
+                        setAgent(prev => ({ ...prev, llmPrompt: newValue }));
+                        // Set cursor position after the inserted variable
+                        setTimeout(() => {
+                          textarea.focus();
+                          const newCursorPos = cursorPos + variable.name.length + 2;
+                          textarea.setSelectionRange(newCursorPos, newCursorPos);
+                        }, 0);
+                      }
+                    }}
+                    className={`px-2 py-1 text-sm rounded-full flex items-center gap-1 ${
+                      variable.isBuiltIn 
+                        ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        : 'bg-green-100 text-green-700 hover:bg-green-200'
+                    }`}
+                  >
+                    <span>{variable.name}</span>
+                    <span className={`text-xs ${variable.isBuiltIn ? 'text-blue-500' : 'text-green-500'}`}>({variable.type})</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -933,6 +1226,146 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                   </div>
                 </div>
               </div>
+
+              <div className="flex items-center group relative">
+                <input
+                  type="checkbox"
+                  id="wakePhraseEnabled"
+                  checked={agent.wakePhraseDetection.enabled}
+                  onChange={(e) => setAgent(prev => ({
+                    ...prev,
+                    wakePhraseDetection: {
+                      ...prev.wakePhraseDetection,
+                      enabled: e.target.checked
+                    }
+                  }))}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="wakePhraseEnabled" className="ml-2 block text-sm text-gray-900">
+                  Détection de mots d'éveil
+                </label>
+                <div className="relative inline-block ml-2">
+                  <InformationCircleIcon className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block w-64 bg-gray-900 text-white text-sm rounded-lg p-2 shadow-lg">
+                    <div className="relative">
+                      <div className="text-xs">
+                        L'agent ne réagira qu'après avoir détecté l'un des mots d'éveil spécifiés.
+                        Une fois un mot d'éveil détecté, l'agent restera actif pendant la durée du délai de maintien.
+                      </div>
+                      <div className="absolute w-3 h-3 bg-gray-900 transform rotate-45 left-1/2 -translate-x-1/2 -bottom-1.5"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {agent.wakePhraseDetection.enabled && (
+                <div className="ml-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Mots d'éveil
+                    </label>
+                    <div className="flex gap-2 mb-4">
+                      <input
+                        type="text"
+                        placeholder="Ajouter un mot d'éveil..."
+                        className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const input = e.target as HTMLInputElement;
+                            const word = input.value.trim();
+                            if (word && !agent.wakePhraseDetection.phrases.includes(word)) {
+                              setAgent(prev => ({
+                                ...prev,
+                                wakePhraseDetection: {
+                                  ...prev.wakePhraseDetection,
+                                  phrases: [...prev.wakePhraseDetection.phrases, word]
+                                }
+                              }));
+                            }
+                            input.value = '';
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const input = document.querySelector('input[placeholder="Ajouter un mot d\'éveil..."]') as HTMLInputElement;
+                          const word = input.value.trim();
+                          if (word && !agent.wakePhraseDetection.phrases.includes(word)) {
+                            setAgent(prev => ({
+                              ...prev,
+                              wakePhraseDetection: {
+                                ...prev.wakePhraseDetection,
+                                phrases: [...prev.wakePhraseDetection.phrases, word]
+                              }
+                            }));
+                          }
+                          input.value = '';
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                      >
+                        Ajouter
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {agent.wakePhraseDetection.phrases.map((word, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-700"
+                        >
+                          {word}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAgent(prev => ({
+                                ...prev,
+                                wakePhraseDetection: {
+                                  ...prev.wakePhraseDetection,
+                                  phrases: prev.wakePhraseDetection.phrases.filter((_, i) => i !== index)
+                                }
+                              }));
+                            }}
+                            className="p-0.5 hover:bg-blue-200 rounded-full"
+                          >
+                            <XMarkIcon className="h-4 w-4" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="keepaliveTimeout" className="block text-sm font-medium text-gray-700">
+                      Délai de maintien (secondes)
+                    </label>
+                    <input
+                      type="range"
+                      id="keepaliveTimeout"
+                      min="5"
+                      max="1800"
+                      value={agent.wakePhraseDetection.keepalive_timeout}
+                      onChange={(e) => setAgent(prev => ({
+                        ...prev,
+                        wakePhraseDetection: {
+                          ...prev.wakePhraseDetection,
+                          keepalive_timeout: Number(e.target.value)
+                        }
+                      }))}
+                      className="mt-2 w-full"
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>5s</span>
+                      <span className="font-bold text-sm text-gray-700">{agent.wakePhraseDetection.keepalive_timeout}s</span>
+                      <span>30min</span>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">
+                      Durée pendant laquelle l'agent restera actif après la détection d'un mot d'éveil.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center group relative">
                 <input
@@ -1016,6 +1449,53 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                 </label>
               </div>
 
+              {/* VAD Section - Moved outside of silence detection */}
+              <div className="mt-6">
+                <div className="flex flex-col space-y-2">
+                  <div className="flex items-center group relative">
+                    <label htmlFor="vadStopSecs" className="text-sm text-gray-700">
+                      Délai de pause VAD (Voice Activity Detection)
+                    </label>
+                    <div className="relative inline-block ml-2">
+                      <InformationCircleIcon className="h-5 w-5 text-gray-400 hover:text-gray-500" />
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block w-96 bg-gray-900 text-white text-sm rounded-lg p-4 shadow-lg z-10">
+                        <div className="relative">
+                          <div className="text-xs space-y-2">
+                            <p>Lorsque le VAD détecte que l'utilisateur parle, il commence à capturer l'audio.</p>
+                            <p>En cas de pause de parole, le VAD ne s'arrête pas immédiatement.</p>
+                            <p>Il attend plutôt la durée spécifiée par le délai de pause.</p>
+                            <p>Si la parole reprend pendant ce délai, le VAD continue la capture dans le même segment.</p>
+                            <p>Si le silence persiste pendant toute la durée du délai, le VAD considère le segment de parole comme terminé et arrête la capture.</p>
+                            <p className="font-semibold mt-2">Ce paramètre permet de :</p>
+                            <ul className="list-disc pl-4">
+                              <li>Empêcher le VAD de s'arrêter prématurément lors de brèves pauses dans la parole.</li>
+                              <li>Permettre des pauses naturelles dans la conversation sans fragmenter la parole en plusieurs segments.</li>
+                              <li>Ajuster la sensibilité du VAD aux pauses en fonction du cas d'utilisation ou des habitudes de parole.</li>
+                            </ul>
+                          </div>
+                          <div className="absolute w-3 h-3 bg-gray-900 transform rotate-45 left-1/2 -translate-x-1/2 -bottom-1.5"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    id="vadStopSecs"
+                    min="0.1"
+                    max="2.0"
+                    step="0.1"
+                    value={agent.vadStopSecs || 0.8}
+                    onChange={(e) => setAgent(prev => ({ ...prev, vadStopSecs: Number(e.target.value) }))}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>0.1s</span>
+                    <span className="font-bold text-sm text-gray-700">{agent.vadStopSecs || 0.8}s</span>
+                    <span>2.0s</span>
+                  </div>
+                </div>
+              </div>
+
               {/* Max Call Duration Control */}
               <div className="mt-6">
                 <div className="flex flex-col space-y-2">
@@ -1041,88 +1521,6 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
             </div>
           </div>
 
-          {/* Variables Section */}
-          <div className="p-6 border-t border-gray-100">
-            <div className="flex items-center mb-6">
-              <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
-              <h2 className="text-lg font-medium">Variables</h2>
-            </div>
-            <div>
-              <p className="mt-1 text-sm text-gray-500 mb-4">
-                Gérez les variables qui seront disponibles pendant l'appel. Les variables intégrées sont automatiquement disponibles.
-                Pour utiliser une variable dans le prompt, entourez-la d'accolades, par exemple : {'{from_number}'} ou {'{ma_variable}'}.
-              </p>
-
-              {/* Variables List */}
-              <div className="space-y-3 mb-4">
-                {agent.variables.map((variable, index) => (
-                  <div 
-                    key={index} 
-                    className={`flex items-center justify-between p-3 border rounded-md ${
-                      !variable.isBuiltIn ? 'cursor-pointer hover:bg-gray-50' : ''
-                    }`}
-                    onClick={() => handleEditVariable(index, variable)}
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div>
-                        <p className="font-medium text-sm">{variable.name}</p>
-                        <p className="text-xs text-gray-500">Type: {variable.type}</p>
-                      </div>
-                      {variable.source && (
-                        <span className={`px-2 py-1 text-xs rounded-full ${
-                          variable.source === 'built-in' 
-                            ? 'bg-blue-100 text-blue-800'
-                            : variable.source === 'CSV input'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {variable.source}
-                        </span>
-                      )}
-                    </div>
-                    {!variable.isBuiltIn && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAgent({
-                            ...agent,
-                            variables: agent.variables.filter((_, i) => i !== index)
-                          });
-                        }}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-full"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Add Variable Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  // Initialize with a default new variable
-                  setEditingVariable({
-                    index: -1,
-                    variable: {
-                      name: '',
-                      type: 'String',
-                      source: 'CSV input',
-                      isBuiltIn: false
-                    }
-                  });
-                  setShowVariableModal(true);
-                }}
-                className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-              >
-                <PlusIcon className="h-5 w-5 mr-2" />
-                Ajouter une variable
-              </button>
-            </div>
-          </div>
-
           {/* Labels Section */}
           <div className="p-6 border-t border-gray-100">
             <div className="flex items-center mb-6">
@@ -1135,49 +1533,65 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               </p>
               
               {/* Label Input */}
-              <div className="flex gap-2 mb-4">
-                <input
-                  type="text"
-                  placeholder="Ajouter un label..."
-                  className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const input = e.target as HTMLInputElement;
-                      handleAddLabel(input.value.trim());
-                      input.value = '';
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const input = document.querySelector('input[placeholder="Ajouter un label..."]') as HTMLInputElement;
-                    handleAddLabel(input.value.trim());
-                    input.value = '';
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                >
-                  Ajouter
-                </button>
+              <div className="flex flex-col gap-2 mb-4">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nom du label..."
+                    value={newLabel.name}
+                    onChange={(e) => setNewLabel(prev => ({ ...prev, name: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newLabel.name && newLabel.description) {
+                        e.preventDefault();
+                        handleAddLabel(newLabel);
+                      }
+                    }}
+                    className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Description du label..."
+                    value={newLabel.description}
+                    onChange={(e) => setNewLabel(prev => ({ ...prev, description: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newLabel.name && newLabel.description) {
+                        e.preventDefault();
+                        handleAddLabel(newLabel);
+                      }
+                    }}
+                    className="block flex-1 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAddLabel(newLabel)}
+                    disabled={!newLabel.name || !newLabel.description}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Ajouter
+                  </button>
+                </div>
               </div>
 
               {/* Labels Display */}
-              <div className="flex flex-wrap gap-2">
-                {agent.labels.map((label, index) => (
-                  <span
+              <div className="flex flex-col gap-2">
+                {(agent.labels || []).map((label, index) => (
+                  <div
                     key={index}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-700"
+                    className="flex items-center justify-between p-2 rounded-lg bg-blue-50 border border-blue-100"
                   >
-                    {label}
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-blue-700">{label.name}</span>
+                      <span className="text-sm text-blue-600">-</span>
+                      <span className="text-sm text-blue-600">{label.description}</span>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => handleRemoveLabel(label)}
-                      className="p-0.5 hover:bg-blue-200 rounded-full"
+                      onClick={() => handleRemoveLabel(label.name)}
+                      className="p-1 text-blue-700 hover:bg-blue-100 rounded-full"
                     >
                       <XMarkIcon className="h-4 w-4" />
                     </button>
-                  </span>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1186,7 +1600,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
           {/* Functions Section */}
           <div className="p-6 border-t border-gray-100">
             <div className="flex items-center mb-6">
-              <Squares2X2Icon className="h-6 w-6 text-gray-600 mr-2" />
+              <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
               <h2 className="text-lg font-medium">Fonctions</h2>
             </div>
             <div>
@@ -1282,6 +1696,108 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
               >
                 <PlusIcon className="h-5 w-5 mr-2" />
                 Ajouter une fonction
+              </button>
+            </div>
+          </div>
+
+          {/* Post-Call Actions Section */}
+          <div className="p-6 border-t border-gray-100">
+            <div className="flex items-center mb-6">
+              <ArrowPathRoundedSquareIcon className="h-6 w-6 text-gray-300 mr-2" />
+              <h2 className="text-lg font-medium text-gray-400">Actions post-appel</h2>
+              <div className="ml-3 flex items-center">
+                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                  <LockClosedIcon className="h-3 w-3 mr-1" />
+                  Bientôt disponible
+                </span>
+              </div>
+            </div>
+            <div className="opacity-50">
+              <p className="mt-1 text-sm text-gray-500 mb-4">
+                Configurez les actions à exécuter automatiquement après chaque appel (envoi de SMS, email, notifications, etc.).
+              </p>
+
+              {/* Post-Call Actions List */}
+              <div className="space-y-3 mb-4">
+                {agent.postCallActions.map((action, index) => (
+                  <div key={index} className="flex flex-col p-3 border border-gray-200 rounded-md bg-gray-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center">
+                        {action.type === 'sms' && <PhoneIcon className="h-5 w-5 text-gray-400 mr-2" />}
+                        {action.type === 'email' && <EnvelopeIcon className="h-5 w-5 text-gray-400 mr-2" />}
+                        {action.type === 'api' && <CommandLineIcon className="h-5 w-5 text-gray-400 mr-2" />}
+                        {action.type === 'notification' && <BellIcon className="h-5 w-5 text-gray-400 mr-2" />}
+                        <div>
+                          <p className="font-medium text-sm text-gray-400">{action.name}</p>
+                          {action.description && (
+                            <p className="text-sm text-gray-400">{action.description}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditPostCallAction(index, action)}
+                          className="inline-flex items-center p-1.5 border border-gray-300 rounded-full text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                          title="Modifier l'action"
+                        >
+                          <span className="sr-only">Modifier l'action</span>
+                          <PencilIcon className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePostCallAction(index)}
+                          className="inline-flex items-center p-1.5 border border-red-300 rounded-full text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                          title="Supprimer l'action"
+                        >
+                          <span className="sr-only">Supprimer l'action</span>
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex items-center mt-2 pt-2 border-t border-gray-100">
+                      <div className="flex items-center flex-grow">
+                        <span className="text-sm text-gray-500 mr-3">État :</span>
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePostCallAction(index)}
+                          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                            action.active ? 'bg-blue-600' : 'bg-gray-200'
+                          }`}
+                        >
+                          <span className="sr-only">
+                            {action.active ? 'Désactiver l\'action' : 'Activer l\'action'}
+                          </span>
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              action.active ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                        <span className="text-sm text-gray-500 ml-3">
+                          {action.active ? 'Activée' : 'Désactivée'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add Post-Call Action Button */}
+              <button
+                type="button"
+                // onClick={() => {
+                //   setShowPostCallActionModal(true);
+                //   setSelectedPostCallActionType(null);
+                //   setPostCallActionConfig(null);
+                //   setEditingPostCallAction(null);
+                // }}
+                // className="flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                              disabled
+                className="flex items-center px-4 py-2 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-400 bg-gray-50 cursor-not-allowed"
+              >
+                <PlusIcon className="h-5 w-5 mr-2" />
+                Ajouter une action post-appel
               </button>
             </div>
           </div>
@@ -1454,6 +1970,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       <PhoneIcon className="h-8 w-8 text-gray-600 mb-2" />
                       <span className="text-sm font-medium">Fin d'appel</span>
                     </button>
+                    {/* Temporarily disabled transfer call button
                     <button
                       type="button"
                       onClick={() => {
@@ -1469,6 +1986,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       <ArrowPathRoundedSquareIcon className="h-8 w-8 text-gray-600 mb-2" />
                       <span className="text-sm font-medium">Transfert d'appel</span>
                     </button>
+                    */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1645,6 +2163,44 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                         required
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Méthode HTTP <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={(functionConfig as CustomFunction)?.method || 'POST'}
+                          onChange={(e) => setFunctionConfig({ 
+                            ...functionConfig as CustomFunction,
+                            method: e.target.value as 'GET' | 'POST' | 'PUT' | 'DELETE'
+                          })}
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        >
+                          <option value="POST">POST</option>
+                          <option value="GET">GET</option>
+                          <option value="PUT">PUT</option>
+                          <option value="DELETE">DELETE</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">
+                          Content Type <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          value={(functionConfig as CustomFunction)?.contentType || 'application/json'}
+                          onChange={(e) => setFunctionConfig({ 
+                            ...functionConfig as CustomFunction,
+                            contentType: e.target.value
+                          })}
+                          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        >
+                          <option value="application/json">application/json</option>
+                          <option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option>
+                          <option value="multipart/form-data">multipart/form-data</option>
+                          <option value="text/plain">text/plain</option>
+                        </select>
+                      </div>
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Délai d'expiration API (Optionnel)</label>
                       <input
@@ -1660,40 +2216,193 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Paramètres (Optionnel)</label>
-                      <p className="mt-1 text-sm text-gray-500 mb-2">
-                        JSON schema qui définit le format dans lequel le LLM retournera. Veuillez consulter la documentation.
-                      </p>
-                      <textarea
-                        value={(functionConfig as CustomFunction)?.parameters || ''}
-                        onChange={(e) => setFunctionConfig({ 
-                          ...functionConfig as CustomFunction,
-                          parameters: e.target.value 
-                        })}
-                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm h-32 bg-gray-900 text-gray-100"
-                        placeholder="Enter JSON Schema here..."
-                      />
-                      <div className="mt-2 flex gap-2">
+                      <div className="flex items-center justify-between mb-4">
+                        <label className="block text-sm font-medium text-gray-700">Paramètres de la fonction</label>
                         <button
                           type="button"
-                          onClick={() => setFunctionConfig({ 
-                            ...functionConfig as CustomFunction,
-                            parameters: JSON.stringify({
-                              name: "search_product",
-                              description: "Search for a product in the catalog",
-                              properties: {
-                                query: {
-                                  type: "string",
-                                  description: "Search query"
-                                }
-                              },
-                              required: ["query"]
-                            }, null, 2)
-                          })}
-                          className="px-3 py-1 text-sm bg-gray-900 text-white rounded-full hover:bg-gray-800"
+                          onClick={() => {
+                            const currentConfig = functionConfig as CustomFunction;
+                            const newParam: Parameter = {
+                              name: '',
+                              type: 'string',
+                              description: '',
+                              required: true
+                            };
+                            setFunctionConfig({
+                              ...currentConfig,
+                              params: [...(currentConfig.params || []), newParam]
+                            });
+                          }}
+                          className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
                         >
-                          example
+                          <PlusIcon className="h-4 w-4 mr-1" />
+                          Ajouter un paramètre
                         </button>
+                      </div>
+                      <div className="space-y-4">
+                        {(functionConfig as CustomFunction)?.params?.map((param, index) => (
+                          <div key={index} className="border rounded-md p-4 relative">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentConfig = functionConfig as CustomFunction;
+                                setFunctionConfig({
+                                  ...currentConfig,
+                                  params: currentConfig.params?.filter((_, i) => i !== index)
+                                });
+                              }}
+                              className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600"
+                            >
+                              <XMarkIcon className="h-5 w-5" />
+                            </button>
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Nom <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={param.name}
+                                  onChange={(e) => {
+                                    const currentConfig = functionConfig as CustomFunction;
+                                    const updatedParams = [...(currentConfig.params || [])];
+                                    updatedParams[index] = { ...param, name: e.target.value };
+                                    
+                                    // Update both params array and parameters string
+                                    const newParams = {
+                                      name: currentConfig.name || '',
+                                      description: currentConfig.description || '',
+                                      properties: Object.fromEntries(
+                                        updatedParams.map(p => [
+                                          p.name,
+                                          { type: p.type, description: p.description }
+                                        ])
+                                      ),
+                                      required: updatedParams.filter(p => p.required).map(p => p.name)
+                                    };
+                                    
+                                    setFunctionConfig({
+                                      ...currentConfig,
+                                      params: updatedParams,
+                                      parameters: JSON.stringify(newParams, null, 2)
+                                    });
+                                  }}
+                                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                                  placeholder="Ex: query, amount, date, etc."
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Type <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                  value={param.type}
+                                  onChange={(e) => {
+                                    const currentConfig = functionConfig as CustomFunction;
+                                    const updatedParams = [...(currentConfig.params || [])];
+                                    updatedParams[index] = { ...param, type: e.target.value };
+                                    
+                                    // Update both params array and parameters string
+                                    const newParams = {
+                                      name: currentConfig.name || '',
+                                      description: currentConfig.description || '',
+                                      properties: Object.fromEntries(
+                                        updatedParams.map(p => [
+                                          p.name,
+                                          { type: p.type, description: p.description }
+                                        ])
+                                      ),
+                                      required: updatedParams.filter(p => p.required).map(p => p.name)
+                                    };
+                                    
+                                    setFunctionConfig({
+                                      ...currentConfig,
+                                      params: updatedParams,
+                                      parameters: JSON.stringify(newParams, null, 2)
+                                    });
+                                  }}
+                                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                                >
+                                  <option value="string">String</option>
+                                  <option value="number">Number</option>
+                                  <option value="integer">Integer</option>
+                                  <option value="boolean">Boolean</option>
+                                  <option value="array">Array</option>
+                                  <option value="object">Object</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="mb-4">
+                              <label className="block text-sm font-medium text-gray-700">
+                                Description <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={param.description}
+                                onChange={(e) => {
+                                  const currentConfig = functionConfig as CustomFunction;
+                                  const updatedParams = [...(currentConfig.params || [])];
+                                  updatedParams[index] = { ...param, description: e.target.value };
+                                  
+                                  // Update both params array and parameters string
+                                  const newParams = {
+                                    name: currentConfig.name || '',
+                                    description: currentConfig.description || '',
+                                    properties: Object.fromEntries(
+                                      updatedParams.map(p => [
+                                        p.name,
+                                        { type: p.type, description: p.description }
+                                      ])
+                                    ),
+                                    required: updatedParams.filter(p => p.required).map(p => p.name)
+                                  };
+                                  
+                                  setFunctionConfig({
+                                    ...currentConfig,
+                                    params: updatedParams,
+                                    parameters: JSON.stringify(newParams, null, 2)
+                                  });
+                                }}
+                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                                placeholder="Description du paramètre"
+                              />
+                            </div>
+                            <div>
+                              <label className="flex items-center">
+                                <input
+                                  type="checkbox"
+                                  checked={param.required}
+                                  onChange={(e) => {
+                                    const currentConfig = functionConfig as CustomFunction;
+                                    const updatedParams = [...(currentConfig.params || [])];
+                                    updatedParams[index] = { ...param, required: e.target.checked };
+                                    
+                                    // Update both params array and parameters string
+                                    const newParams = {
+                                      name: currentConfig.name || '',
+                                      description: currentConfig.description || '',
+                                      properties: Object.fromEntries(
+                                        updatedParams.map(p => [
+                                          p.name,
+                                          { type: p.type, description: p.description }
+                                        ])
+                                      ),
+                                      required: updatedParams.filter(p => p.required).map(p => p.name)
+                                    };
+                                    
+                                    setFunctionConfig({
+                                      ...currentConfig,
+                                      params: updatedParams,
+                                      parameters: JSON.stringify(newParams, null, 2)
+                                    });
+                                  }}
+                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                />
+                                <span className="ml-2 text-sm text-gray-700">Paramètre requis</span>
+                              </label>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -1759,6 +2468,523 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                   className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
                 >
                   {editingFunction ? 'Mettre à jour' : 'Enregistrer'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Post-Call Action Modal */}
+      {showPostCallActionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b">
+              <h3 className="text-lg font-medium">
+                {editingPostCallAction ? 'Modifier l\'action post-appel' : 'Ajouter une action post-appel'}
+              </h3>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {/* Action Type Selection */}
+              {!selectedPostCallActionType && !editingPostCallAction && (
+                <div className="p-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPostCallActionType('sms');
+                        setPostCallActionConfig({
+                          phoneNumber: '',
+                          message: '',
+                          variables: []
+                        } as SMSConfig);
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <PhoneIcon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">SMS</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPostCallActionType('email');
+                        setPostCallActionConfig({
+                          to: '',
+                          subject: '',
+                          body: '',
+                          variables: []
+                        } as EmailConfig);
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <EnvelopeIcon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">Email</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPostCallActionType('api');
+                        setPostCallActionConfig({
+                          url: '',
+                          method: 'GET',
+                          variables: []
+                        } as APIConfig);
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <CommandLineIcon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">Requête API</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedPostCallActionType('notification');
+                        setPostCallActionConfig({
+                          type: 'both',
+                          message: '',
+                          variables: []
+                        } as NotificationConfig);
+                      }}
+                      className="flex flex-col items-center p-4 border rounded-lg hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <BellIcon className="h-8 w-8 text-gray-600 mb-2" />
+                      <span className="text-sm font-medium">Notification</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Configuration Forms */}
+              {selectedPostCallActionType && (
+                <div className="p-6">
+                  <div className="space-y-4">
+                    {/* Common Fields */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Nom <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={editingPostCallAction?.action.name || ''}
+                        onChange={(e) => {
+                          if (editingPostCallAction) {
+                            setEditingPostCallAction({
+                              ...editingPostCallAction,
+                              action: { ...editingPostCallAction.action, name: e.target.value }
+                            });
+                          }
+                        }}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="Nom de l'action"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Description
+                      </label>
+                      <input
+                        type="text"
+                        value={editingPostCallAction?.action.description || ''}
+                        onChange={(e) => {
+                          if (editingPostCallAction) {
+                            setEditingPostCallAction({
+                              ...editingPostCallAction,
+                              action: { ...editingPostCallAction.action, description: e.target.value }
+                            });
+                          }
+                        }}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                        placeholder="Description de l'action"
+                      />
+                    </div>
+
+                    {/* Type-specific Fields */}
+                    {selectedPostCallActionType === 'sms' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Numéro de téléphone <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={(postCallActionConfig as SMSConfig)?.phoneNumber || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as SMSConfig),
+                              phoneNumber: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            placeholder="+33123456789"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Message <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            value={(postCallActionConfig as SMSConfig)?.message || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as SMSConfig),
+                              message: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            rows={4}
+                            placeholder="Contenu du SMS"
+                            required
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {selectedPostCallActionType === 'email' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Destinataire <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="email"
+                            value={(postCallActionConfig as EmailConfig)?.to || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as EmailConfig),
+                              to: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            placeholder="email@example.com"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Sujet <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={(postCallActionConfig as EmailConfig)?.subject || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as EmailConfig),
+                              subject: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            placeholder="Sujet de l'email"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Contenu <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            value={(postCallActionConfig as EmailConfig)?.body || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as EmailConfig),
+                              body: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            rows={6}
+                            placeholder="Contenu de l'email"
+                            required
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {selectedPostCallActionType === 'api' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            URL <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="url"
+                            value={(postCallActionConfig as APIConfig)?.url || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as APIConfig),
+                              url: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            placeholder="https://api.example.com/endpoint"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Méthode <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={(postCallActionConfig as APIConfig)?.method || 'GET'}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as APIConfig),
+                              method: e.target.value as 'GET' | 'POST' | 'PUT' | 'DELETE'
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                          >
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            En-têtes (Headers)
+                          </label>
+                          <textarea
+                            value={JSON.stringify((postCallActionConfig as APIConfig)?.headers || {}, null, 2)}
+                            onChange={(e) => {
+                              try {
+                                const headers = JSON.parse(e.target.value);
+                                setPostCallActionConfig({
+                                  ...(postCallActionConfig as APIConfig),
+                                  headers
+                                });
+                              } catch (error) {
+                                // Handle invalid JSON
+                              }
+                            }}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm font-mono"
+                            rows={4}
+                            placeholder='{"Content-Type": "application/json"}'
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Corps de la requête (Body)
+                          </label>
+                          <textarea
+                            value={(postCallActionConfig as APIConfig)?.body || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as APIConfig),
+                              body: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm font-mono"
+                            rows={4}
+                            placeholder='{"key": "value"}'
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {selectedPostCallActionType === 'notification' && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Type de notification <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={(postCallActionConfig as NotificationConfig)?.type || 'both'}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as NotificationConfig),
+                              type: e.target.value as 'sms' | 'email' | 'both'
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                          >
+                            <option value="sms">SMS uniquement</option>
+                            <option value="email">Email uniquement</option>
+                            <option value="both">SMS et Email</option>
+                          </select>
+                        </div>
+                        {(['sms', 'both'].includes((postCallActionConfig as NotificationConfig)?.type || 'both')) && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700">
+                              Numéro de téléphone <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={(postCallActionConfig as NotificationConfig)?.phoneNumber || ''}
+                              onChange={(e) => setPostCallActionConfig({
+                                ...(postCallActionConfig as NotificationConfig),
+                                phoneNumber: e.target.value
+                              })}
+                              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                              placeholder="+33123456789"
+                              required
+                            />
+                          </div>
+                        )}
+                        {(['email', 'both'].includes((postCallActionConfig as NotificationConfig)?.type || 'both')) && (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700">
+                              Email <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="email"
+                              value={(postCallActionConfig as NotificationConfig)?.email || ''}
+                              onChange={(e) => setPostCallActionConfig({
+                                ...(postCallActionConfig as NotificationConfig),
+                                email: e.target.value
+                              })}
+                              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                              placeholder="email@example.com"
+                              required
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Message <span className="text-red-500">*</span>
+                          </label>
+                          <textarea
+                            value={(postCallActionConfig as NotificationConfig)?.message || ''}
+                            onChange={(e) => setPostCallActionConfig({
+                              ...(postCallActionConfig as NotificationConfig),
+                              message: e.target.value
+                            })}
+                            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                            rows={4}
+                            placeholder="Contenu de la notification"
+                            required
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Variables Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Variables disponibles
+                      </label>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {agent.variables.map((variable, index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => {
+                              const config = postCallActionConfig as any;
+                              
+                              // Add variable to the variables array if not already present
+                              if (!config.variables?.includes(variable.name)) {
+                                setPostCallActionConfig({
+                                  ...config,
+                                  variables: [...(config.variables || []), variable.name]
+                                });
+                              }
+
+                              // Insert the variable into the appropriate content field
+                              let contentField = '';
+                              switch (selectedPostCallActionType) {
+                                case 'sms':
+                                  contentField = 'message';
+                                  break;
+                                case 'email':
+                                  contentField = 'body';
+                                  break;
+                                case 'api':
+                                  contentField = 'body';
+                                  break;
+                                case 'notification':
+                                  contentField = 'message';
+                                  break;
+                              }
+
+                              if (contentField && config[contentField] !== undefined) {
+                                const textArea = document.querySelector(`textarea[value="${config[contentField]}"]`) as HTMLTextAreaElement;
+                                if (textArea) {
+                                  const cursorPos = textArea.selectionStart;
+                                  const textBefore = config[contentField].substring(0, cursorPos);
+                                  const textAfter = config[contentField].substring(cursorPos);
+                                  const newValue = textBefore + '{' + variable.name + '}' + textAfter;
+                                  
+                                  setPostCallActionConfig({
+                                    ...config,
+                                    [contentField]: newValue
+                                  });
+
+                                  // Set cursor position after the inserted variable
+                                  setTimeout(() => {
+                                    textArea.focus();
+                                    const newCursorPos = cursorPos + variable.name.length + 2;
+                                    textArea.setSelectionRange(newCursorPos, newCursorPos);
+                                  }, 0);
+                                } else {
+                                  // If textarea not found, just append to the end
+                                  setPostCallActionConfig({
+                                    ...config,
+                                    [contentField]: (config[contentField] || '') + '{' + variable.name + '}'
+                                  });
+                                }
+                              }
+                            }}
+                            className={`inline-flex items-center px-3 py-1 text-sm rounded-full ${
+                              variable.isBuiltIn 
+                                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                : 'bg-green-100 text-green-700 hover:bg-green-200'
+                            }`}
+                          >
+                            <span>{variable.name}</span>
+                            <span className={`ml-1 text-xs ${variable.isBuiltIn ? 'text-blue-500' : 'text-green-500'}`}>
+                              ({variable.type})
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">
+                        Cliquez sur une variable pour l'ajouter au contenu. Utilisez {'{nom_variable}'} dans votre texte.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t flex justify-end gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPostCallActionModal(false);
+                  setSelectedPostCallActionType(null);
+                  setPostCallActionConfig(null);
+                  setEditingPostCallAction(null);
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                Annuler
+              </button>
+              {selectedPostCallActionType && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (editingPostCallAction) {
+                      // Update existing action
+                      setAgent(prev => ({
+                        ...prev,
+                        postCallActions: prev.postCallActions.map((action, i) =>
+                          i === editingPostCallAction.index
+                            ? {
+                                ...action,
+                                type: selectedPostCallActionType,
+                                config: postCallActionConfig as any
+                              }
+                            : action
+                        )
+                      }));
+                    } else {
+                      // Add new action
+                      setAgent(prev => ({
+                        ...prev,
+                        postCallActions: [
+                          ...prev.postCallActions,
+                          {
+                            name: 'New Action',
+                            description: '',
+                            type: selectedPostCallActionType,
+                            config: postCallActionConfig as any,
+                            active: true
+                          }
+                        ]
+                      }));
+                    }
+                    setShowPostCallActionModal(false);
+                    setSelectedPostCallActionType(null);
+                    setPostCallActionConfig(null);
+                    setEditingPostCallAction(null);
+                  }}
+                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  {editingPostCallAction ? 'Mettre à jour' : 'Ajouter'}
                 </button>
               )}
             </div>
