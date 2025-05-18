@@ -1,22 +1,29 @@
 import { auth } from '@/auth';
 import { headers } from 'next/headers';
 import { Call } from '../ui/calls/types';
+import { builtInVariables, Variable } from './constants';
 
 type CampaignStatus = 'en-cours' | 'planifiée' | 'terminée' | 'brouillon';
 
 export interface AIAgent {
     id: string;
     name: string;
-    voice: string;
+    voice_name: string;
+    background_audio: string;
     language: string;
-    personality: string;
-    speed: number;
-    call_type: string;
+    llm_prompt: string;
+    allow_interruptions: boolean;
+    ai_starts_conversation: boolean;
+    silence_detection: boolean;
+    silence_timeout: number;
+    max_retries: number;
+    max_call_duration: number;
     knowledge_base_path?: string;
     knowledge_base_type?: string;
-    llm_prompt: string;
     created_at: string;
     user_id: string;
+    variables?: Variable[];
+    vad_stop_secs?: number;
 }
 
 export interface Campaign {
@@ -44,11 +51,8 @@ export interface PhoneNumber {
     user_id: string;
 }
 
-// Add more detailed logging
 export const ANALYTICS_URL = process.env.NEXT_PUBLIC_ANALYTICS_SERVICE_URL || 'http://localhost:5002';
 export const ORCHESTRATOR_URL = process.env.NEXT_PUBLIC_ORCHESTRATOR_SERVICE_URL || 'http://localhost:5000';
-console.log('Environment:', process.env.NODE_ENV); // This will show 'development' or 'production'
-console.log('ANALYTICS_URL:', ANALYTICS_URL);
 const handleResponse = async (response: Response) => {
     if (!response.ok) {
         const errorData = await response.json().catch(() => null);
@@ -70,14 +74,12 @@ async function getCurrentUserId(): Promise<string> {
 
 export async function createAIAgent(formData: FormData, userId: string): Promise<AIAgent> {
     try {
-        // Clone the FormData and append the user_id
         const formDataWithUser = new FormData();
         for (const [key, value] of formData.entries()) {
-            console.log(`${key}:`, value instanceof File ? `File: ${value.name}` : value);
             formDataWithUser.append(key, value);
         }
         formDataWithUser.append('user_id', userId);
-        console.log('Form data with user:', userId);
+
         const response = await fetch(`${ANALYTICS_URL}/api/ai-agents`, {
             method: 'POST',
             body: formDataWithUser,
@@ -92,7 +94,6 @@ export async function createAIAgent(formData: FormData, userId: string): Promise
         }
         return response.json();
     } catch (error) {
-        console.error('Error creating AI agent:', error);
         throw error;
     }
 }
@@ -110,7 +111,32 @@ export async function getAIAgents(userId: string) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        return await response.json();
+        const data = await response.json();
+        
+        // Transform dynamic_variables into variables for each agent
+        return data.map((agent: any) => {
+            // Start with built-in variables
+            const variables = [...builtInVariables];
+            
+            // Add dynamic variables if they exist
+            if (agent.dynamic_variables) {
+                variables.push(...agent.dynamic_variables.map((v: any) => ({
+                    name: v.name,
+                    // Convert type to proper case (STRING -> String, etc)
+                    type: v.type.replace('VariableDataType.', '').charAt(0) + 
+                         v.type.replace('VariableDataType.', '').slice(1).toLowerCase() as 'String' | 'Boolean' | 'Datetime' | 'Number',
+                    // Remove VariableSource. prefix if present
+                    source: v.source.replace('VariableSource.', '') === 'CSV' ? 'CSV input' : v.source.replace('VariableSource.', '') as 'built-in' | 'CSV input' | 'custom',
+                    isBuiltIn: v.is_built_in || false
+                })));
+                delete agent.dynamic_variables;
+            }
+            
+            return {
+                ...agent,
+                variables
+            };
+        });
     } catch (error) {
         console.error('Error fetching AI agents:', error);
         throw error;
@@ -120,7 +146,29 @@ export async function getAIAgents(userId: string) {
 export async function getAIAgent(agentId: string): Promise<AIAgent> {
     try {
         const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`);
-        return handleResponse(response);
+        const data = await handleResponse(response);
+        
+        // Start with built-in variables
+        const variables = [...builtInVariables];
+        
+        // Add dynamic variables if they exist
+        if (data.dynamic_variables) {
+            variables.push(...data.dynamic_variables.map((v: any) => ({
+                name: v.name,
+                // Convert type to proper case (STRING -> String, etc)
+                type: v.type.replace('VariableDataType.', '').charAt(0) + 
+                     v.type.replace('VariableDataType.', '').slice(1).toLowerCase() as 'String' | 'Boolean' | 'Datetime' | 'Number',
+                // Remove VariableSource. prefix if present
+                source: v.source.replace('VariableSource.', '') === 'CSV' ? 'CSV input' : v.source.replace('VariableSource.', '') as 'built-in' | 'CSV input' | 'custom',
+                isBuiltIn: v.is_built_in || false
+            })));
+            delete data.dynamic_variables;
+        }
+        
+        return {
+            ...data,
+            variables
+        };
     } catch (error) {
         console.error('Error fetching AI agent:', error);
         throw error;
@@ -128,36 +176,24 @@ export async function getAIAgent(agentId: string): Promise<AIAgent> {
 }
 
 export async function updateAIAgent(agentId: string, formData: FormData) {
-  try {
-    // Log the form data being sent
-    console.log('Updating AI Agent - Form Data:');
-    for (const [key, value] of formData.entries()) {
-      console.log(`${key}:`, value instanceof File ? `File: ${value.name}` : value);
+    try {
+        const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`, {
+            method: 'PUT',
+            body: formData,
+            headers: {
+                'Accept': 'application/json',
+            }
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.detail || 'Failed to update agent');
+        }
+
+        return response.json();
+    } catch (error) {
+        throw error;
     }
-
-    // Add headers to specify content type
-    const response = await fetch(`${ANALYTICS_URL}/api/ai-agents/${agentId}`, {
-      method: 'PUT',
-      body: formData,
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
-
-    // Log the response status and data
-    console.log('Update AI Agent Response Status:', response.status);
-    const data = await response.json();
-    console.log('Update AI Agent Response Data:', data);
-
-    if (!response.ok) {
-      throw new Error(JSON.stringify(data.detail || data));
-    }
-
-    return data;
-  } catch (error) {
-    console.error('Error in updateAIAgent:', error);
-    throw error;
-  }
 }
 
 export async function deleteAIAgent(agentId: string, userId: string) {
@@ -168,11 +204,14 @@ export async function deleteAIAgent(agentId: string, userId: string) {
                 'Accept': 'application/json',
             }
         });
+
+        const data = await response.json();
+
         if (!response.ok) {
-            const errorData = await response.json().catch(() => null);
-            throw new Error(errorData?.detail || 'Failed to delete agent');
+            throw new Error(data.detail || 'Failed to delete agent');
         }
-        return response.json();
+
+        return data;
     } catch (error) {
         console.error('Error deleting AI agent:', error);
         throw error;
@@ -206,7 +245,24 @@ export async function createCampaign(formData: FormData): Promise<Campaign> {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => null);
-            throw new Error(errorData?.detail || 'Failed to create campaign');
+            let errorMessage = errorData?.detail || 'Erreur lors de la création de la campagne';
+            
+            // Map specific error messages to user-friendly French messages
+            if (errorMessage.includes('Invalid phone number format')) {
+                errorMessage = 'Format de numéro de téléphone invalide dans le fichier CSV';
+            } else if (errorMessage.includes('Insufficient credits')) {
+                errorMessage = 'Crédits insuffisants pour créer la campagne';
+            } else if (response.status === 404) {
+                errorMessage = 'Numéro de téléphone non trouvé';
+            } else if (response.status === 400) {
+                if (errorMessage === 'CSV must contain \'phone_number\' column') {
+                    errorMessage = 'Le fichier CSV doit contenir une colonne "phone_number"';
+                } else {
+                    errorMessage = 'Données de campagne invalides: ' + errorMessage;
+                }
+            }
+            
+            throw new Error(errorMessage);
         }
         return response.json();
     } catch (error) {
@@ -338,6 +394,94 @@ export async function deleteCall(callIds: string[], userId: string): Promise<voi
         }
     } catch (error) {
         console.error('Error deleting calls:', error);
+        throw error;
+    }
+}
+
+// Agent Functions API
+export async function getAgentFunctions(agentId: string, userId: string) {
+  try {
+    const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions?user_id=${userId}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      throw new Error(`Failed to fetch agent functions: ${response.status} ${response.statusText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error in getAgentFunctions:', error);
+    throw error;
+  }
+}
+
+export async function removeAgentFunction(agentId: string, functionId: number, userId: string) {
+    try {
+        const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions/${functionId}?user_id=${userId}`;
+        const response = await fetch(url, {
+            method: 'DELETE',
+            headers: {
+                'Accept': 'application/json',
+            }
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.detail || `Error: ${response.status}`);
+        }
+
+        return response.json();
+    } catch (error) {
+        throw error;
+    }
+}
+
+export async function createAgentFunction(agentId: string, functionData: any, userId: string) {
+    try {
+        const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions?user_id=${userId}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(functionData),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`Error: ${response.status} - ${JSON.stringify(errorData)}`);
+        }
+
+        return response.json();
+    } catch (error) {
+        throw error;
+    }
+}
+
+export async function updateAgentFunction(agentId: string, functionId: number, isActive: boolean, userId: string) {
+    try {
+        const url = `${ANALYTICS_URL}/api/agents/${agentId}/functions/${functionId}?user_id=${userId}`;
+        const response = await fetch(url, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ is_active: isActive }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => null);
+            throw new Error(errorData?.detail || `Error: ${response.status}`);
+        }
+
+        return response.json();
+    } catch (error) {
         throw error;
     }
 }

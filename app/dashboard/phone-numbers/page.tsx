@@ -86,19 +86,25 @@ export default function PhoneNumbersPage() {
       // Process all pending changes
       for (const [phoneNumberId, agentId] of Object.entries(pendingChanges)) {
         try {
-          const response = await fetch(`${ANALYTICS_URL}/api/phone-numbers/${phoneNumberId}/agent?user_id=${session.user.id}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: JSON.stringify({
-              agent_id: agentId === 'none' ? null : agentId
-            })
-          });
+          // Find the phone number object to get the actual number
+          const phoneNumberObj = phoneNumbers.find(pn => pn.id === phoneNumberId);
+          if (!phoneNumberObj) {
+            throw new Error(`Phone number with ID ${phoneNumberId} not found`);
+          }
 
-          if (!response.ok) {
-            throw new Error(`Failed to update phone number ${phoneNumberId}`);
+          // Call the webhook to update configuration and agent assignment
+          const webhookResponse = await fetch(
+            `${ORCHESTRATOR_URL}/webhook/config-update?phone_number=${encodeURIComponent(phoneNumberObj.number)}&user_id=${encodeURIComponent(session.user.id)}${agentId === 'none' ? '' : `&agent_id=${encodeURIComponent(agentId)}`}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              }
+            }
+          );
+
+          if (!webhookResponse.ok) {
+            throw new Error(`Failed to update configuration for phone number ${phoneNumberObj.number}`);
           }
         } catch (err) {
           errors.push(`Failed to update phone number ${phoneNumberId}`);
@@ -107,12 +113,12 @@ export default function PhoneNumbersPage() {
 
       if (errors.length > 0) {
         setToast({
-          message: `Some updates failed: ${errors.join(', ')}`,
+          message: `Certaines mises à jour ont échoué : ${errors.join(', ')}`,
           type: 'error'
         });
       } else {
         setToast({
-          message: 'All changes saved successfully',
+          message: 'Toutes les modifications ont été enregistrées',
           type: 'success'
         });
         setPendingChanges({});
@@ -120,7 +126,7 @@ export default function PhoneNumbersPage() {
       }
     } catch (err) {
       setToast({
-        message: 'Failed to save changes',
+        message: 'Échec de l\'enregistrement des modifications',
         type: 'error'
       });
     } finally {

@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { DocumentIcon, PhoneIcon } from '@heroicons/react/24/outline';
+import { DocumentIcon, PhoneIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { getPhoneNumbers, createCampaign, type PhoneNumber } from '@/app/lib/api';
 import { useSession } from 'next-auth/react';
 import { toast, Toaster } from 'react-hot-toast';
+import Link from 'next/link';
 
 interface CampaignForm {
   name: string;
@@ -35,21 +36,19 @@ export default function CreateCampaignPage() {
     retry_frequency: 5,
     max_retries: 2,
   });
+  const [showConsentModal, setShowConsentModal] = useState(false);
+  const [showRegulationModal, setShowRegulationModal] = useState(false);
 
   const loadPhoneNumbers = useCallback(async () => {
-    console.log('loadPhoneNumbers called');
     try {
       setIsLoadingPhones(true);
       setPhoneError(null);
       if (!session?.user?.id) {
         throw new Error('User ID not found');
       }
-      console.log('Fetching phone numbers...');
       const numbers = await getPhoneNumbers(session.user.id);
-      console.log('Received phone numbers:', numbers);
       setPhoneNumbers(numbers.filter(n => n.status === 'active'));
     } catch (err) {
-      console.error('Detailed error:', err);
       setPhoneError('Erreur lors du chargement des numéros');
     } finally {
       setIsLoadingPhones(false);
@@ -57,7 +56,6 @@ export default function CreateCampaignPage() {
   }, [session]);
 
   useEffect(() => {
-    console.log('useEffect triggered');
     if (session) {
       loadPhoneNumbers();
     }
@@ -65,20 +63,43 @@ export default function CreateCampaignPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    let loadingToast: string | undefined;
     
     // Validate required fields
     if (!campaign.name.trim()) {
       toast.error('Le nom de la campagne est requis');
+      setIsSubmitting(false);
       return;
     }
 
     if (!campaign.contactsFile) {
       toast.error('La liste des contacts est requise');
+      setIsSubmitting(false);
       return;
     }
 
     if (!campaign.phoneNumberId) {
       toast.error('Un numéro de téléphone est requis');
+      setIsSubmitting(false);
+      return;
+    }
+
+    // Check if the selected phone number has an assigned agent
+    const selectedPhoneNumber = phoneNumbers.find(n => n.id === campaign.phoneNumberId);
+    if (!selectedPhoneNumber?.agent_id) {
+      toast.error(
+        <div className="text-sm">
+          <p className="font-medium mb-1">Agent IA non assigné</p>
+          <p>Veuillez assigner un agent IA au numéro de téléphone sélectionné avant de lancer la campagne.</p>
+          <p className="mt-2">
+            <Link href="/dashboard/phone-numbers" className="text-blue-600 hover:text-blue-800">
+              Gérer les agents IA →
+            </Link>
+          </p>
+        </div>,
+        { duration: 6000 }
+      );
+      setIsSubmitting(false);
       return;
     }
 
@@ -86,21 +107,22 @@ export default function CreateCampaignPage() {
       setIsSubmitting(true);
 
       // Check credits before proceeding
-      const estimatedDurationMinutes = contactsCount * 2; // 2 minutes per contact
-      const creditsResponse = await fetch(`/api/credits/check?duration_minutes=${estimatedDurationMinutes}`);
+      const estimatedMinutes = Math.ceil(contactsCount * 2); // 2 minutes per contact
+      const creditsResponse = await fetch('/api/credits');
       const creditsData = await creditsResponse.json();
 
       if (!creditsResponse.ok) {
         throw new Error(creditsData.error || 'Failed to check credits');
       }
 
-      if (!creditsData.has_sufficient_credits) {
-        const requiredCredits = creditsData.estimated_cost;
-        const currentBalance = creditsData.current_balance;
+      const minutesBalance = creditsData.credits.minutes_balance;
+      const hasSufficientCredits = minutesBalance >= estimatedMinutes;
+
+      if (!hasSufficientCredits) {
         toast.error(
           <div className="text-sm">
-            <p className="font-medium mb-1">Crédits insuffisants</p>
-            <p>Vous avez {currentBalance.toFixed(2)}€ mais cette campagne nécessite environ {requiredCredits.toFixed(2)}€</p>
+            <p className="font-medium mb-1">Minutes insuffisantes</p>
+            <p>Vous avez {minutesBalance} minutes disponibles mais cette campagne nécessite environ {estimatedMinutes} minutes</p>
             <p className="mt-2">Veuillez recharger votre compte.</p>
           </div>,
           {
@@ -109,6 +131,42 @@ export default function CreateCampaignPage() {
               maxWidth: '500px',
             },
           }
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Check business hours
+      const now = new Date();
+      const scheduleDate = selectedDate ? new Date(selectedDate) : now;
+
+      // Convert to French time (UTC+1)
+      const frenchTime = new Date(scheduleDate.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+      const hours = frenchTime.getHours();
+      const minutes = frenchTime.getMinutes();
+      const day = frenchTime.getDay();
+
+      // Check if it's a weekend (0 is Sunday, 6 is Saturday)
+      if (day === 0 || day === 6) {
+        toast.error(
+          <div className="text-sm">
+            <p className="font-medium">Horaires non autorisés</p>
+            <p>Les campagnes ne peuvent être lancées que pendant les jours ouvrables (lundi au vendredi).</p>
+          </div>,
+          { duration: 5000 }
+        );
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Check if it's within business hours (10:00-13:00 and 14:00-21:00 French time)
+      if (hours < 10 || hours === 13 || hours >= 23) {
+        toast.error(
+          <div className="text-sm">
+            <p className="font-medium">Horaires non autorisés</p>
+            <p>Les campagnes ne peuvent être lancées qu'entre 10h et 21h (hors 13h-14h).</p>
+          </div>,
+          { duration: 5000 }
         );
         setIsSubmitting(false);
         return;
@@ -133,14 +191,49 @@ export default function CreateCampaignPage() {
         apiFormData.append('scheduled_date', selectedDate);
       }
 
+      // Log form data being sent
+      console.log('Creating campaign with the following data:');
+      for (const [key, value] of apiFormData.entries()) {
+        console.log(`${key}: ${value}`);
+      }
+      console.log('max_retries value:', campaign.max_retries);
+      console.log('retry_frequency value:', campaign.retry_frequency);
+      
       console.log('Creating campaign with status:', status);
-      await createCampaign(apiFormData);
+      
+      // Show loading toast without auto-dismiss
+      loadingToast = toast.loading('Création de la campagne en cours...', {
+        duration: Infinity,  // Make toast stay until manually dismissed
+        position: 'bottom-right',
+      });
 
-      router.replace('/dashboard/campaigns');
-      setIsSubmitting(false);
-    } catch (error) {
+      const response = await createCampaign(apiFormData);
+      
+      // Dismiss loading toast
+      toast.dismiss(loadingToast);
+      
+      // If we get here, the campaign was created successfully
+      toast.success('Campagne créée avec succès', {
+        duration: 4000,
+        position: 'bottom-right',
+      });
+
+      // Add a small delay before navigation to ensure toast is visible
+      setTimeout(() => {
+        router.push('/dashboard/campaigns');
+      }, 500);
+    } catch (error: any) {
       console.error('Error creating campaign:', error);
-      toast.error(error instanceof Error ? error.message : 'Erreur lors de la création de la campagne');
+      // Dismiss any existing toasts
+      toast.dismiss(loadingToast);
+      
+      // Show detailed error message from API if available
+      const errorMessage = error.message || 'Erreur lors de la création de la campagne';
+      toast.error(errorMessage, {
+        duration: 6000,  // Show error for longer
+        position: 'bottom-right',
+      });
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -172,7 +265,13 @@ export default function CreateCampaignPage() {
     }
   };
 
+  const handleFileSelectClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowConsentModal(true);
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setShowConsentModal(false);
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -186,23 +285,237 @@ export default function CreateCampaignPage() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
+      const lines = text.split('\n');
+      const headers = lines[0].toLowerCase();
+      
       // Validate CSV structure
-      const headers = text.split('\n')[0].toLowerCase();
-      if (!headers.includes('phone_number') || !headers.includes('name') || !headers.includes('email')) {
-        toast.error('Le fichier CSV doit contenir les colonnes "phone_number", "name" et "email"');
+      if (!headers.includes('phone_number')) {
+        toast.error(
+          <div className="text-sm">
+            <p className="font-medium mb-1">Structure du fichier CSV invalide</p>
+            <p className="mb-2">Le fichier doit contenir une colonne nommée "phone_number"</p>
+            <p className="text-xs text-red-600">Colonnes trouvées:</p>
+            <pre className="text-xs mt-1 bg-red-50 p-2 rounded">{headers}</pre>
+          </div>,
+          { duration: 8000 }
+        );
         setCampaign(prev => ({ ...prev, contactsFile: null }));
         e.target.value = '';  // Reset the file input
         return;
       }
-      const rows = text.split('\n').filter(row => row.trim()).length - 1;
+
+      // Find phone_number column index
+      const headerColumns = headers.split(',').map(h => h.trim());
+      const phoneNumberIndex = headerColumns.indexOf('phone_number');
+
+      // Validate phone numbers format
+      const invalidPhoneNumbers = [];
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue; // Skip empty lines
+        
+        const columns = lines[i].split(',');
+        let phoneNumber = columns[phoneNumberIndex]?.trim();
+        
+        if (!phoneNumber) continue; // Skip empty phone numbers
+        
+        // Remove spaces, hyphens, and non-numeric characters except '+'
+        phoneNumber = phoneNumber.replace(/[\s-]/g, '');
+        
+        // Add + prefix if missing for numbers starting with country code
+        if (!phoneNumber.startsWith('+') && (phoneNumber.startsWith('972') || phoneNumber.startsWith('33'))) {
+          phoneNumber = '+' + phoneNumber;
+        }
+        
+        // Check all valid formats:
+        // 1. French format starting with +33 followed by 9 digits
+        // 2. French format starting with 0 followed by 9 digits
+        // 3. Israeli format starting with +972 followed by 9 digits
+        const isValidFormat = (
+          /^\+33\d{9}$/.test(phoneNumber) ||
+          /^0\d{9}$/.test(phoneNumber) ||
+          /^\+972\d{9}$/.test(phoneNumber)
+        );
+        
+        if (!isValidFormat) {
+          invalidPhoneNumbers.push({ line: i + 1, number: columns[phoneNumberIndex]?.trim() });
+          if (invalidPhoneNumbers.length >= 3) break; // Limit the number of examples
+        }
+      }
+
+      if (invalidPhoneNumbers.length > 0) {
+        const examples = invalidPhoneNumbers
+          .map(({ line, number }) => `Ligne ${line}: ${number}`)
+          .join('\n');
+        
+        toast.error(
+          <div className="text-sm">
+            <p className="font-medium mb-1">Format de numéro de téléphone invalide</p>
+            <p className="mb-2">Les formats acceptés sont:</p>
+            <ul className="list-disc pl-4 mb-2 text-xs">
+              <li>Format français: +33612345678 ou 0612345678 ou 33612345678</li>
+            </ul>
+            <p className="text-xs text-red-600">Exemples d'erreurs:</p>
+            <pre className="text-xs mt-1 bg-red-50 p-2 rounded">{examples}</pre>
+          </div>,
+          { duration: 8000 }
+        );
+        setCampaign(prev => ({ ...prev, contactsFile: null }));
+        e.target.value = '';  // Reset the file input
+        return;
+      }
+
+      const rows = lines.filter(row => row.trim()).length - 1;
       setContactsCount(rows);
-      setCampaign(prev => ({ ...prev, contactsFile: file }));  // Set file only after validation
+      setCampaign(prev => ({ ...prev, contactsFile: file }));  // Set file only after all validations pass
     };
     reader.readAsText(file);
   };
 
   return (
     <>
+      {/* Regulation Modal */}
+      {showRegulationModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b">
+              <div className="flex justify-center mb-4">
+                <div className="rounded-full bg-orange-100 p-3">
+                  <InformationCircleIcon className="h-6 w-6 text-orange-400" />
+                </div>
+              </div>
+              <h3 className="text-lg font-medium text-center">Réglementation sur la protection des données</h3>
+            </div>
+
+            <div className="p-6 overflow-y-auto">
+              <div className="space-y-6 text-sm text-gray-600">
+                <p className="font-medium">
+                  Votre fichier doit être 100% OPT-IN, et vous devez être en mesure de fournir la preuve du consentement explicite de vos contacts.
+                </p>
+
+                <div>
+                  <p className="font-medium mb-2">Cette preuve doit inclure au minimum :</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>La date du consentement.</li>
+                    <li>Les données collectées.</li>
+                    <li>Les finalités pour lesquelles les données ont été collectées (ex. : offres promotionnelles, relances commerciales, enquêtes de satisfaction, etc.).</li>
+                    <li>Les canaux de communication autorisés (téléphone, SMS, email, etc.).</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <p className="font-medium mb-2">Votre fichier contient-il des données sensibles ?</p>
+                  <p className="mb-2">Si votre base de contacts contient des données sensibles, des obligations supplémentaires s'appliquent.</p>
+                  <p className="mb-2">Sont considérées comme données sensibles :</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>L'origine raciale ou ethnique</li>
+                    <li>Les opinions politiques, philosophiques ou religieuses</li>
+                    <li>L'appartenance syndicale</li>
+                    <li>La santé ou la vie sexuelle</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <p className="mb-2">Si vos fichiers contiennent l'une de ces informations, vous devez être en mesure de prouver au moins l'une des conditions suivantes en cas de contrôle :</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Votre contact a donné son consentement exprès (écrit, clair et explicite) et vous pouvez en apporter la preuve.</li>
+                    <li>Les données sont traitées à des fins médicales ou de recherche en santé, et vous justifiez d'une activité dans ce domaine.</li>
+                    <li>Les données concernent les membres d'une association, organisation philosophique, politique ou syndicale.</li>
+                    <li>Vous disposez d'une autorisation de la CNIL pour le traitement de ces données.</li>
+                  </ul>
+                </div>
+
+                <p>
+                  En cas de contrôle, nous nous réservons le droit de vous demander à tout moment la preuve du consentement des contacts de vos fichiers.
+                </p>
+
+                <p>
+                  Pour vous aider à respecter la réglementation, nous avons mis en place des ressources et guides dédiés. Accédez à nos documentations ici : <a href="https://www.app.zecall.ai/conditions-generales-dutilisation" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700">https://www.app.zecall.ai/conditions-generales-dutilisation</a>
+                </p>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-between gap-4 border-t">
+              <button
+                type="button"
+                onClick={() => setShowRegulationModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRegulationModal(false);
+                  document.getElementById('file-upload')?.click();
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Je suis conscient de mes obligations
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Consent Modal */}
+      {showConsentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex justify-center mb-4">
+                <div className="rounded-full bg-orange-100 p-3">
+                  <InformationCircleIcon className="h-6 w-6 text-orange-400" />
+                </div>
+              </div>
+              <h3 className="text-lg font-medium text-center mb-4">Important</h3>
+              <div className="space-y-4 text-sm text-gray-600">
+                <p>
+                  En utilisant notre solution pour vos campagnes d'appels, vous importez un fichier de contacts sous votre entière responsabilité.
+                </p>
+                <div>
+                  <p className="mb-2">La réglementation impose que :</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>Votre fichier de contacts soit 100% opt-in.</li>
+                    <li>Vous ayez conservé la preuve du consentement explicite de vos contacts.</li>
+                  </ul>
+                </div>
+                <p>
+                  Le traitement des données personnelles et sensibles est strictement encadré. Notre plateforme étant utilisée librement pour toutes vos campagnes d'appels, nous ne pourrons être tenus responsables en cas de non-conformité.
+                </p>
+                <p
+                  className="text-blue-600 hover:text-blue-700 cursor-pointer"
+                  onClick={() => {
+                    setShowConsentModal(false);
+                    setShowRegulationModal(true);
+                  }}
+                >
+                  En savoir plus sur la réglementation en vigueur
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-between gap-4">
+              <button
+                type="button"
+                onClick={() => setShowConsentModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConsentModal(false);
+                  document.getElementById('file-upload')?.click();
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Je suis conscient de mes obligations
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Toaster
         position="bottom-right"
         reverseOrder={false}
@@ -337,6 +650,7 @@ export default function CreateCampaignPage() {
                         />
                         <label
                           htmlFor="file-upload"
+                          onClick={handleFileSelectClick}
                           className={`cursor-pointer inline-flex items-center rounded-md px-3 py-2 text-sm font-semibold shadow-sm
                             ${campaign.contactsFile 
                               ? 'bg-white text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50'
@@ -354,7 +668,7 @@ export default function CreateCampaignPage() {
                       )}
                     </div>
                     <p className="mt-2 text-sm text-gray-500">
-                      Fichier CSV avec les colonnes "phone_number", "name" et "email"
+                      Votre fichier CSV doit contenir une colonne nommée "phone_number" qui contient les numéros de téléphone des contacts.
                     </p>
                   </div>
                 </section>
@@ -379,17 +693,6 @@ export default function CreateCampaignPage() {
                           <option value={2}>2 tentatives (1 rappel)</option>
                           <option value={3}>3 tentatives (2 rappels)</option>
                           <option value={4}>4 tentatives (3 rappels)</option>
-                          <option value={5}>5 tentatives (4 rappels)</option>
-                          <option value={6}>6 tentatives (5 rappels)</option>
-                          <option value={7}>7 tentatives (6 rappels)</option>
-                          <option value={8}>8 tentatives (7 rappels)</option>
-                          <option value={9}>9 tentatives (8 rappels)</option>
-                          <option value={10}>10 tentatives (9 rappels)</option>
-                          <option value={11}>11 tentatives (10 rappels)</option>
-                          <option value={12}>12 tentatives (11 rappels)</option>
-                          <option value={13}>13 tentatives (12 rappels)</option>
-                          <option value={14}>14 tentatives (13 rappels)</option>
-                          <option value={15}>15 tentatives (14 rappels)</option>
                         </select>
                       </div>
 
@@ -403,15 +706,14 @@ export default function CreateCampaignPage() {
                             onChange={(e) => setCampaign({ ...campaign, retry_frequency: parseInt(e.target.value) })}
                             className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
                           >
-                            <option value={1}>1 minute</option>
-                            <option value={5}>5 minutes</option>
-                            <option value={1440}>1 jour</option>
-                            <option value={2880}>2 jours</option>
-                            <option value={4320}>3 jours</option>
-                            <option value={5760}>4 jours</option>
-                            <option value={7200}>5 jours</option>
-                            <option value={8640}>6 jours</option>
-                            <option value={10080}>7 jours</option>
+                            <option value={1}>Toutes les minutes</option>
+                            <option value={60}>Toutes les heures</option>
+                            <option value={120}>Toutes les 2 heures</option>
+                            <option value={240}>Toutes les 4 heures</option>
+                            <option value={360}>Toutes les 6 heures</option>
+                            <option value={480}>Toutes les 8 heures</option>
+                            <option value={720}>Toutes les 12 heures</option>
+                            <option value={1440}>Tous les jours</option>
                           </select>
                         </div>
                       )}
@@ -443,16 +745,9 @@ export default function CreateCampaignPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          const tomorrow = new Date();
-                          tomorrow.setDate(tomorrow.getDate() + 1);
-                          setSelectedDate(tomorrow.toISOString().split('T')[0]);
-                        }}
-                        className={`flex-1 px-4 py-2 rounded-md text-sm font-medium ${
-                          selectedDate 
-                            ? 'bg-blue-50 text-blue-700 border-2 border-blue-200'
-                            : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                        }`}
+                        disabled={true}
+                        title="Cette fonctionnalité n'est pas encore disponible"
+                        className={`flex-1 px-4 py-2 rounded-md text-sm font-medium cursor-not-allowed opacity-50 bg-white text-gray-700 border border-gray-300`}
                       >
                         Planifier pour plus tard
                       </button>

@@ -16,6 +16,7 @@ function CallHistoryContent() {
   const [filteredCalls, setFilteredCalls] = useState<Call[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingCalls, setIsDeletingCalls] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [selectedCalls, setSelectedCalls] = useState<string[]>([]);
   const [currentFilters, setCurrentFilters] = useState<FilterState>({
@@ -42,7 +43,7 @@ function CallHistoryContent() {
     position: { x: number; y: number }; 
     colorClass?: string 
   } | null>(null);
-  const REFRESH_INTERVAL = 60000; // Refresh every 60 seconds
+  const REFRESH_INTERVAL = 30000; // Refresh every 30 seconds
   const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // Add a ref to track if we're on a touch device
@@ -58,6 +59,8 @@ function CallHistoryContent() {
     try {
       if (!isRefresh) {
         setIsLoading(true);
+      } else {
+        setIsRefreshing(true);
       }
 
       if (!session?.user?.id) {
@@ -112,13 +115,23 @@ function CallHistoryContent() {
         }
       }
     } catch (error) {
-      console.error('Error loading calls:', error);
+      console.error('Error loading call data:', error);
+      setToast({
+        message: 'Failed to refresh call data. Please try again.',
+        type: 'error'
+      });
     } finally {
       if (!isRefresh) {
         setIsLoading(false);
       }
+      setIsRefreshing(false);
       setIsInitialLoad(false);
     }
+  };
+
+  // Manual refresh function
+  const handleManualRefresh = () => {
+    loadCalls(true);
   };
 
   // Set up auto-refresh
@@ -128,7 +141,7 @@ function CallHistoryContent() {
 
     // Set up interval for periodic refresh
     refreshIntervalRef.current = setInterval(() => {
-      loadCalls(true); // Pass true to indicate this is a refresh
+      loadCalls(true);
     }, REFRESH_INTERVAL);
 
     // Cleanup function
@@ -137,14 +150,40 @@ function CallHistoryContent() {
         clearInterval(refreshIntervalRef.current);
       }
     };
-  }, [session, campaignId, currentFilters]); // Added currentFilters to dependencies
+  }, [session, campaignId]); // Removed currentFilters from dependencies to prevent too frequent refreshes
 
-  // Add a separate effect to handle filter changes
+  // Separate effect for filter changes
   useEffect(() => {
     if (!isInitialLoad) {
-      loadCalls(true);
+      const filtered = calls.filter(call => {
+        const matchCallerNumber = !currentFilters.callerNumber || 
+          call.caller_number.toLowerCase().includes(currentFilters.callerNumber.toLowerCase());
+        const matchCalleeNumber = !currentFilters.calleeNumber || 
+          call.callee_number.toLowerCase().includes(currentFilters.calleeNumber.toLowerCase());
+        const matchCategory = !currentFilters.category || 
+          call.call_category === currentFilters.category;
+        const matchCampaign = !currentFilters.campaignId ||
+          call.campaign_id === currentFilters.campaignId;
+        const matchStatus = !currentFilters.callStatus ||
+          call.call_status === currentFilters.callStatus;
+        const matchDirection = !currentFilters.direction ||
+          call.direction === currentFilters.direction;
+        
+        const callDate = new Date(call.date);
+        const selectedDate = currentFilters.date ? new Date(currentFilters.date) : null;
+        
+        const matchDate = !selectedDate || (
+          callDate.getFullYear() === selectedDate.getFullYear() &&
+          callDate.getMonth() === selectedDate.getMonth() &&
+          callDate.getDate() === selectedDate.getDate()
+        );
+        
+        return matchCallerNumber && matchCalleeNumber && matchCategory && 
+               matchCampaign && matchDate && matchStatus && matchDirection;
+      });
+      setFilteredCalls(filtered);
     }
-  }, [currentFilters]);
+  }, [currentFilters, calls]);
 
   const handlePlayAudio = (url: string, id: string, name: string) => {
     // Find the call to get its duration from the database
@@ -180,7 +219,7 @@ function CallHistoryContent() {
         setIsPlaying(true);
         setPlayingId(id);
       }).catch(error => {
-        console.error('Error playing audio:', error);
+        console.error('Error playing audio - please check server logs');
         setIsPlaying(false);
       });
     }
@@ -302,14 +341,21 @@ function CallHistoryContent() {
         throw new Error('User ID not found');
       }
       await deleteCall(ids, session.user.id);
+      
+      // Update both calls and filteredCalls states by removing the deleted calls
+      const updatedCalls = calls.filter(call => !ids.includes(call.id));
+      const updatedFilteredCalls = filteredCalls.filter(call => !ids.includes(call.id));
+      
+      setCalls(updatedCalls);
+      setFilteredCalls(updatedFilteredCalls);
       setSelectedCalls([]);
-      await loadCalls(); // Refresh the list
+      
       setToast({
         message: ids.length > 1 ? 'Appels supprimés avec succès' : 'Appel supprimé avec succès',
         type: 'success'
       });
     } catch (err) {
-      console.error('Error deleting calls:', err);
+      console.error('Error deleting calls - please check server logs');
       setToast({
         message: 'Erreur lors de la suppression des appels',
         type: 'error'
@@ -405,6 +451,37 @@ function CallHistoryContent() {
         <h1 className="text-2xl font-bold">Historique des appels</h1>
         <div className="flex items-center gap-4">
           <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg
+              className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`}
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            {isRefreshing ? 'Actualisation...' : 'Actualiser'}
+          </button>
+          {selectedCalls.length > 0 && (
+            <button
+              onClick={() => handleDelete(selectedCalls)}
+              disabled={isDeletingCalls}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-md hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <TrashIcon className="w-5 h-5" />
+              Supprimer ({selectedCalls.length})
+            </button>
+          )}
+          <button
             onClick={() => exportCallsToCSV(filteredCalls)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
           >
@@ -427,6 +504,17 @@ function CallHistoryContent() {
               <table className="min-w-full divide-y divide-gray-200 table-fixed">
                 <thead>
                   <tr className="bg-gray-50">
+                    <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pr-0 w-12">
+                      <input
+                        type="checkbox"
+                        className="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
+                        checked={selectedCalls.length === filteredCalls.length && filteredCalls.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                      />
+                    </th>
+                    <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pr-0 w-24">
+                      <span className="sr-only">Actions</span>
+                    </th>
                     <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 w-20">
                       ID Appel
                     </th>
@@ -438,6 +526,9 @@ function CallHistoryContent() {
                     </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Nom
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-36">
+                      Email
                     </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-24">
                       Direction
@@ -460,7 +551,7 @@ function CallHistoryContent() {
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Campagne
                     </th>
-                    <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-0 w-24">
+                    <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pr-0 w-12">
                       <span className="sr-only">Actions</span>
                     </th>
                   </tr>
@@ -468,7 +559,50 @@ function CallHistoryContent() {
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {filteredCalls.map((call) => (
                     <tr key={call.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900">
+                      <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
+                          checked={selectedCalls.includes(call.id)}
+                          onChange={(e) => handleSelectCall(call.id, e.target.checked)}
+                        />
+                      </td>
+                      <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
+                        <div className="flex gap-2">
+                          {call.recording_url && (
+                            <button
+                              onClick={() => handlePlayAudio(
+                                call.recording_url,
+                                call.id,
+                                `Appel ${call.caller_number}`
+                              )}
+                              className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
+                              title="Écouter l'enregistrement"
+                            >
+                              {playingId === call.id && isPlaying ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                                  <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" />
+                                </svg>
+                              ) : (
+                                <PlayCircleIcon className="h-5 w-5" />
+                              )}
+                            </button>
+                          )}
+                          {(call.ai_transcript || call.ai_summary) && (
+                            <button
+                              onClick={() => handleViewTranscript(
+                                call.ai_transcript,
+                                call.ai_summary
+                              )}
+                              className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
+                              title="Voir la transcription"
+                            >
+                              <DocumentTextIcon className="h-5 w-5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.id.substring(0, 7)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
@@ -479,6 +613,9 @@ function CallHistoryContent() {
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.user_name}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        {call.user_email || '-'}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
                         <span 
@@ -552,7 +689,6 @@ function CallHistoryContent() {
                             title={call.campaign_name}
                             onClick={(e) => handleTextExpand(call.campaign_name || '', e)}
                             onTouchEnd={(e) => {
-                              // Convert TouchEvent to MouseEvent-like object for our handler
                               const mouseEvent = {
                                 currentTarget: e.currentTarget,
                                 preventDefault: () => e.preventDefault(),
@@ -568,40 +704,15 @@ function CallHistoryContent() {
                           </span>
                         ) : '-'}
                       </td>
-                      <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium">
-                        <div className="flex justify-end gap-2">
-                          {call.recording_url && (
-                            <button
-                              onClick={() => handlePlayAudio(
-                                call.recording_url,
-                                call.id,
-                                `Appel ${call.caller_number}`
-                              )}
-                              className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
-                              title="Écouter l'enregistrement"
-                            >
-                              {playingId === call.id && isPlaying ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                                  <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" />
-                                </svg>
-                              ) : (
-                                <PlayCircleIcon className="h-5 w-5" />
-                              )}
-                            </button>
-                          )}
-                          {(call.ai_transcript || call.ai_summary) && (
-                            <button
-                              onClick={() => handleViewTranscript(
-                                call.ai_transcript,
-                                call.ai_summary
-                              )}
-                              className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
-                              title="Voir la transcription"
-                            >
-                              <DocumentTextIcon className="h-5 w-5" />
-                            </button>
-                          )}
-                        </div>
+                      <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
+                        <button
+                          onClick={() => handleDelete([call.id])}
+                          disabled={isDeletingCalls}
+                          className="p-1 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors"
+                          title="Supprimer l'appel"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
                       </td>
                     </tr>
                   ))}
