@@ -47,13 +47,6 @@ export default function NavLinks({ isCollapsed = false }: NavLinksProps) {
       activeClass: 'bg-emerald-50 text-emerald-600 border-emerald-600'
     },
     { 
-      name: 'Mes Emails', 
-      href: '/dashboard/email-management',
-      icon: EnvelopeIcon,
-      bgClass: 'bg-blue-400/10 text-blue-600',
-      activeClass: 'bg-blue-50 text-blue-600 border-blue-600'
-    },
-    { 
       name: 'Mes Campagnes', 
       href: '/dashboard/campaigns', 
       icon: RocketLaunchIcon,
