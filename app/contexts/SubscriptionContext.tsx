@@ -7,15 +7,12 @@ interface UserSubscription {
   plan: string;
   status: string;
   autoRenew: boolean;
-  endDate?: string | null;
 }
 
 interface SubscriptionContextType {
   subscription: UserSubscription | null;
   isLoading: boolean;
   refetchSubscription: () => Promise<void>;
-  showUpgradeModal: boolean;
-  setShowUpgradeModal: (show: boolean) => void;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -24,7 +21,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const { data: session } = useSession();
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const fetchSubscription = async () => {
     if (!session?.user) {
@@ -57,9 +53,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const value = {
     subscription,
     isLoading,
-    refetchSubscription: fetchSubscription,
-    showUpgradeModal,
-    setShowUpgradeModal
+    refetchSubscription: fetchSubscription
   };
 
   return (

@@ -10,7 +10,6 @@ import { Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { toast } from 'sonner';
-import ConfirmDialog from '@/app/components/ConfirmDialog';
 
 type Status = 'en-cours' | 'planifiée' | 'terminée' | 'brouillon';
 
@@ -18,10 +17,6 @@ export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showStopDialog, setShowStopDialog] = useState(false);
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
   const { data: session } = useSession();
 
@@ -74,23 +69,13 @@ export default function CampaignsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    setSelectedCampaignId(id);
-    setShowDeleteDialog(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!selectedCampaignId) return;
-    setIsDeleting(true);
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cette campagne ?')) return;
     try {
-      await deleteCampaign(selectedCampaignId);
+      await deleteCampaign(id);
       loadCampaigns(); // Refresh the list
-      setShowDeleteDialog(false);
     } catch (err) {
       console.error('Error deleting campaign:', err);
       toast.error('Erreur lors de la suppression de la campagne');
-    } finally {
-      setIsDeleting(false);
-      setSelectedCampaignId(null);
     }
   };
 
@@ -100,7 +85,7 @@ export default function CampaignsPage() {
       loadCampaigns(); // Refresh the list
     } catch (err) {
       console.error('Error duplicating campaign:', err);
-      toast.error('Erreur lors de la duplication de la campagne');
+      alert('Erreur lors de la duplication de la campagne');
     }
   };
 
@@ -110,28 +95,7 @@ export default function CampaignsPage() {
       loadCampaigns(); // Refresh the list
     } catch (err) {
       console.error('Error updating campaign status:', err);
-      toast.error('Erreur lors de la mise à jour du statut de la campagne');
-    }
-  };
-
-  const handleStopCampaign = (id: string) => {
-    setSelectedCampaignId(id);
-    setShowStopDialog(true);
-  };
-
-  const confirmStopCampaign = async () => {
-    if (!selectedCampaignId) return;
-    setIsDeleting(true);
-    try {
-      await updateCampaignStatus(selectedCampaignId, 'terminée');
-      loadCampaigns(); // Refresh the list
-      setShowStopDialog(false);
-    } catch (err) {
-      console.error('Error stopping campaign:', err);
-      toast.error('Erreur lors de l\'arrêt de la campagne');
-    } finally {
-      setIsDeleting(false);
-      setSelectedCampaignId(null);
+      alert('Erreur lors de la mise à jour du statut de la campagne');
     }
   };
 
@@ -237,67 +201,52 @@ export default function CampaignsPage() {
                       >
                         <Menu.Items 
                           onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                          className="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
+                          className="fixed -ml-[144px] z-[100] mt-2 w-48 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none"
                         >
-                          <Menu.Item>
-                            {({ active }) => (
-                              <Link
-                                href={`/dashboard/campaigns/${campaign.id}/edit`}
-                                className={`${
-                                  active ? 'bg-gray-100' : ''
-                                } block px-4 py-2 text-sm text-gray-700`}
-                              >
-                                Modifier
-                              </Link>
-                            )}
-                          </Menu.Item>
-                          <Menu.Item>
-                            {({ active }) => (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDuplicate(campaign);
-                                }}
-                                className={`${
-                                  active ? 'bg-gray-100' : ''
-                                } block w-full text-left px-4 py-2 text-sm text-gray-700`}
-                              >
-                                Dupliquer
-                              </button>
-                            )}
-                          </Menu.Item>
-                          {campaign.status === 'en-cours' && (
+                          <div className="py-1">
                             <Menu.Item>
-                              {({ active }) => (
+                              {({ active }: { active: boolean }) => (
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleStopCampaign(campaign.id);
-                                  }}
+                                  onClick={() => handleDuplicate(campaign)}
                                   className={`${
                                     active ? 'bg-gray-100' : ''
                                   } block w-full text-left px-4 py-2 text-sm text-gray-700`}
                                 >
-                                  Arrêter
+                                  Dupliquer
                                 </button>
                               )}
                             </Menu.Item>
-                          )}
-                          <Menu.Item>
-                            {({ active }) => (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDelete(campaign.id);
-                                }}
-                                className={`${
-                                  active ? 'bg-gray-100' : ''
-                                } block w-full text-left px-4 py-2 text-sm text-red-600`}
-                              >
-                                Supprimer
-                              </button>
+                            {campaign.status === 'en-cours' && (
+                              <Menu.Item>
+                                {({ active }: { active: boolean }) => (
+                                  <button
+                                    onClick={() => {
+                                      if (confirm('Êtes-vous sûr de vouloir arrêter cette campagne ?')) {
+                                        handleStatusUpdate(campaign.id, 'terminée');
+                                      }
+                                    }}
+                                    className={`${
+                                      active ? 'bg-gray-100' : ''
+                                    } block w-full text-left px-4 py-2 text-sm text-gray-700`}
+                                  >
+                                    Arrêter
+                                  </button>
+                                )}
+                              </Menu.Item>
                             )}
-                          </Menu.Item>
+                            <Menu.Item>
+                              {({ active }: { active: boolean }) => (
+                                <button
+                                  onClick={() => handleDelete(campaign.id)}
+                                  className={`${
+                                    active ? 'bg-gray-100 text-red-600' : 'text-red-500'
+                                  } block w-full text-left px-4 py-2 text-sm`}
+                                >
+                                  Supprimer
+                                </button>
+                              )}
+                            </Menu.Item>
+                          </div>
                         </Menu.Items>
                       </Transition>
                     </Menu>
@@ -308,28 +257,6 @@ export default function CampaignsPage() {
           </table>
         </div>
       )}
-
-      <ConfirmDialog
-        isOpen={showDeleteDialog}
-        onClose={() => setShowDeleteDialog(false)}
-        onConfirm={confirmDelete}
-        title="Supprimer la campagne"
-        message="Êtes-vous sûr de vouloir supprimer cette campagne ?"
-        confirmLabel="Supprimer"
-        isLoading={isDeleting}
-        isDanger
-      />
-
-      <ConfirmDialog
-        isOpen={showStopDialog}
-        onClose={() => setShowStopDialog(false)}
-        onConfirm={confirmStopCampaign}
-        title="Arrêter la campagne"
-        message="Êtes-vous sûr de vouloir arrêter cette campagne ?"
-        confirmLabel="Arrêter"
-        isLoading={isDeleting}
-        isDanger
-      />
     </div>
   );
 }

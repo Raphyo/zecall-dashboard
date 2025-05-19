@@ -8,10 +8,12 @@ import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 import { builtInVariables, Variable } from '@/app/lib/constants';
 
+// Import audio files
 const metroAudio = '/api/audio?file=backgrounds%2FAlmost-Empty-Metro-Station-in-Paris.mp3';
 const office1Audio = '/api/audio?file=backgrounds%2FOffice-Ambience.mp3';
 const office2Audio = '/api/audio?file=backgrounds%2FOffice-Ambience-2.mp3';
 
+// Voice samples
 const voiceSamples = [
   { id: 'guillaume-11labs', name: 'Guillaume (H)', gender: 'male', url: '/api/audio?file=voices%2FGuillaume-11labs.mp3' },
   { id: 'lucien-11labs', name: 'Lucien (H)', gender: 'male', url: '/api/audio?file=voices%2FLucien-11labs.mp3' },

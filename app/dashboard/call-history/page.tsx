@@ -4,13 +4,13 @@
 import { useEffect, useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { deleteCall, getCalls, updateCampaignStatus } from '@/app/lib/api';
-import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon, TrashIcon, XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { PlayCircleIcon, DocumentTextIcon, ArrowDownTrayIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import type { Call } from '@/app/ui/calls/types';
+import { TranscriptModal } from '@/app/ui/modals/transcript-modal';
 import { Filters, FilterState } from '@/app/ui/calls/filters';
 import { useSession } from 'next-auth/react';
 import { exportCallsToCSV, calculateCallCost } from '@/app/lib/utils';
-import { toast } from 'sonner';
-import ConfirmDialog from '@/app/components/ConfirmDialog';
+import { Toast } from '@/app/ui/toast';
 
 function CallHistoryContent() {
   const [calls, setCalls] = useState<Call[]>([]);
@@ -18,8 +18,8 @@ function CallHistoryContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingCalls, setIsDeletingCalls] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [selectedCalls, setSelectedCalls] = useState<string[]>([]);
-  const [selectedCallDetails, setSelectedCallDetails] = useState<Call | null>(null);
   const [currentFilters, setCurrentFilters] = useState<FilterState>({
     callerNumber: '',
     calleeNumber: '',
@@ -32,22 +32,20 @@ function CallHistoryContent() {
   const searchParams = useSearchParams();
   const campaignId = searchParams.get('campaign');
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
-  const [selectedTranscript, setSelectedTranscript] = useState<{ transcript: string; summary: string }>({ transcript: '', summary: '' });
+  const [selectedTranscript, setSelectedTranscript] = useState({ transcript: '', summary: '' });
   const [currentAudioInfo, setCurrentAudioInfo] = useState({ name: '', duration: 0, url: '' });
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { data: session } = useSession();
-  const [expandedText, setExpandedText] = useState<{
-    text: string;
-    position: { x: number; y: number };
-    colorClass?: string;
+  const [expandedText, setExpandedText] = useState<{ 
+    text: string; 
+    position: { x: number; y: number }; 
+    colorClass?: string 
   } | null>(null);
   const REFRESH_INTERVAL = 30000; // Refresh every 30 seconds
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [selectedCallIds, setSelectedCallIds] = useState<string[]>([]);
 
   // Add a ref to track if we're on a touch device
   const isTouchDevice = useRef(false);
@@ -119,7 +117,10 @@ function CallHistoryContent() {
       }
     } catch (error) {
       console.error('Error loading call data:', error);
-      toast.error('Failed to refresh call data. Please try again.');
+      setToast({
+        message: 'Failed to refresh call data. Please try again.',
+        type: 'error'
+      });
     } finally {
       if (!isRefresh) {
         setIsLoading(false);
@@ -333,23 +334,35 @@ function CallHistoryContent() {
     return directionStyles[direction] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20';
   };
 
-  const handleDeleteCalls = async (callIds: string[]) => {
-    if (!session?.user?.id) {
-      toast.error('Session utilisateur non trouvée');
-      return;
-    }
+  const handleDelete = async (ids: string[]) => {
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${ids.length > 1 ? 'ces appels' : 'cet appel'} ?`)) return;
+    setIsDeletingCalls(true);
     try {
-      setIsDeletingCalls(true);
-      await deleteCall(callIds, session.user.id);
-      await loadCalls();
-      toast.success('Appel(s) supprimé(s) avec succès');
-    } catch (error) {
-      console.error('Error deleting calls:', error);
-      toast.error('Une erreur est survenue lors de la suppression des appels');
+      if (!session?.user?.id) {
+        throw new Error('User ID not found');
+      }
+      await deleteCall(ids, session.user.id);
+      
+      // Update both calls and filteredCalls states by removing the deleted calls
+      const updatedCalls = calls.filter(call => !ids.includes(call.id));
+      const updatedFilteredCalls = filteredCalls.filter(call => !ids.includes(call.id));
+      
+      setCalls(updatedCalls);
+      setFilteredCalls(updatedFilteredCalls);
+      setSelectedCalls([]);
+      
+      setToast({
+        message: ids.length > 1 ? 'Appels supprimés avec succès' : 'Appel supprimé avec succès',
+        type: 'success'
+      });
+    } catch (err) {
+      console.error('Error deleting calls - please check server logs');
+      setToast({
+        message: 'Erreur lors de la suppression des appels',
+        type: 'error'
+      });
     } finally {
       setIsDeletingCalls(false);
-      setShowDeleteDialog(false);
-      setSelectedCallIds([]);
     }
   };
 
@@ -461,18 +474,11 @@ function CallHistoryContent() {
           </button>
           {selectedCalls.length > 0 && (
             <button
-              onClick={() => {
-                setSelectedCallIds(selectedCalls);
-                setShowDeleteDialog(true);
-              }}
+              onClick={() => handleDelete(selectedCalls)}
               disabled={isDeletingCalls}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-300 rounded-md hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isDeletingCalls ? (
-                <ArrowPathIcon className="h-4 w-4 animate-spin" />
-              ) : (
-                <TrashIcon className="h-4 w-4" />
-              )}
+              <TrashIcon className="w-5 h-5" />
               Supprimer ({selectedCalls.length})
             </button>
           )}
@@ -507,8 +513,29 @@ function CallHistoryContent() {
                         onChange={(e) => handleSelectAll(e.target.checked)}
                       />
                     </th>
+                    <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pr-0 w-24">
+                      <span className="sr-only">Actions</span>
+                    </th>
                     <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 w-20">
-                      ID
+                      ID Appel
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
+                      Appelant
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
+                      Destinataire
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
+                      Nom
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-36">
+                      Email
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-24">
+                      Direction
+                    </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
+                      Catégorie
                     </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Date
@@ -516,26 +543,14 @@ function CallHistoryContent() {
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-20">
                       Durée
                     </th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-20">
+                      Coût
+                    </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-24">
                       Statut
                     </th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
-                      Catégorie
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-24">
-                      Direction
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-20">
-                      Coût
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
                       Campagne
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
-                      Appelant
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 w-28">
-                      Destinataire
                     </th>
                     <th scope="col" className="relative py-3.5 pl-4 pr-3 sm:pr-0 w-12">
                       <span className="sr-only">Actions</span>
@@ -544,11 +559,7 @@ function CallHistoryContent() {
                 </thead>
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {filteredCalls.map((call) => (
-                    <tr 
-                      key={call.id} 
-                      className="hover:bg-gray-50 transition-colors cursor-pointer"
-                      onClick={() => setSelectedCallDetails(call)}
-                    >
+                    <tr key={call.id} className="hover:bg-gray-50 transition-colors">
                       <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
                         <input
                           type="checkbox"
@@ -557,8 +568,88 @@ function CallHistoryContent() {
                           onChange={(e) => handleSelectCall(call.id, e.target.checked)}
                         />
                       </td>
+                      <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
+                        <div className="flex gap-2">
+                          {call.recording_url && (
+                            <button
+                              onClick={() => handlePlayAudio(
+                                call.recording_url,
+                                call.id,
+                                `Appel ${call.caller_number}`
+                              )}
+                              className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
+                              title="Écouter l'enregistrement"
+                            >
+                              {playingId === call.id && isPlaying ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                                  <path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" />
+                                </svg>
+                              ) : (
+                                <PlayCircleIcon className="h-5 w-5" />
+                              )}
+                            </button>
+                          )}
+                          {(call.ai_transcript || call.ai_summary) && (
+                            <button
+                              onClick={() => handleViewTranscript(
+                                call.ai_transcript,
+                                call.ai_summary
+                              )}
+                              className="p-1 text-blue-600 hover:text-blue-900 rounded-full hover:bg-blue-50 transition-colors"
+                              title="Voir la transcription"
+                            >
+                              <DocumentTextIcon className="h-5 w-5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.id.substring(0, 7)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        {call.caller_number}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        {call.callee_number}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        {call.user_name}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        {call.user_email || '-'}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm">
+                        <span 
+                          className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getDirectionStyle(call.direction)}`}
+                          title={call.direction}
+                        >
+                          <span className="truncate max-w-[100px] block">
+                            {call.direction}
+                          </span>
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm">
+                        <span 
+                          className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getCategoryStyle(call.call_category)} cursor-pointer active:opacity-80`}
+                          title={call.call_category}
+                          onClick={(e) => handleTextExpand(call.call_category, e, getCategoryStyle(call.call_category))}
+                          onTouchEnd={(e) => {
+                            // Convert TouchEvent to MouseEvent-like object for our handler
+                            const mouseEvent = {
+                              currentTarget: e.currentTarget,
+                              preventDefault: () => e.preventDefault(),
+                              stopPropagation: () => e.stopPropagation(),
+                              clientX: e.changedTouches[0].clientX,
+                              clientY: e.changedTouches[0].clientY
+                            } as unknown as React.MouseEvent;
+                            
+                            handleTextExpand(call.call_category, mouseEvent, getCategoryStyle(call.call_category));
+                          }}
+                        >
+                          <span className="truncate max-w-[120px] block">
+                            {call.call_category}
+                          </span>
+                        </span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {new Date(call.date).toLocaleDateString()} {call.hour}
@@ -566,12 +657,16 @@ function CallHistoryContent() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {formatDuration(call.duration)}
                       </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
+                        {calculateCallCost(call.duration)}€
+                      </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm">
                         <span 
                           className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getStatusStyle(call.call_status)} cursor-pointer active:opacity-80`}
                           title={call.call_status}
                           onClick={(e) => handleTextExpand(call.call_status, e, getStatusStyle(call.call_status))}
                           onTouchEnd={(e) => {
+                            // Convert TouchEvent to MouseEvent-like object for our handler
                             const mouseEvent = {
                               currentTarget: e.currentTarget,
                               preventDefault: () => e.preventDefault(),
@@ -587,35 +682,6 @@ function CallHistoryContent() {
                             {call.call_status}
                           </span>
                         </span>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm">
-                        <div className="relative group/category">
-                          <span 
-                            className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getCategoryStyle(call.call_category)} cursor-pointer`}
-                          >
-                            <span className="truncate max-w-[120px] block">
-                              {call.call_category}
-                            </span>
-                          </span>
-                          <div 
-                            className={`absolute left-0 -top-1 -translate-y-full px-2.5 py-1.5 rounded-md text-xs font-medium ${getCategoryStyle(call.call_category)} whitespace-nowrap opacity-0 group-hover/category:opacity-100 z-50 shadow-lg transition-opacity duration-200`}
-                          >
-                            {call.call_category}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm">
-                        <span 
-                          className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getDirectionStyle(call.direction)}`}
-                          title={call.direction}
-                        >
-                          <span className="truncate max-w-[100px] block">
-                            {call.direction}
-                          </span>
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {calculateCallCost(call.duration)}€
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
                         {call.campaign_name ? (
@@ -639,23 +705,14 @@ function CallHistoryContent() {
                           </span>
                         ) : '-'}
                       </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {call.caller_number}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                        {call.callee_number}
-                      </td>
                       <td className="relative whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium">
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedCallIds([call.id]);
-                            setShowDeleteDialog(true);
-                          }}
+                          onClick={() => handleDelete([call.id])}
                           disabled={isDeletingCalls}
                           className="p-1 text-red-600 hover:text-red-900 rounded-full hover:bg-red-50 transition-colors"
+                          title="Supprimer l'appel"
                         >
-                          <TrashIcon className="h-4 w-4" />
+                          <TrashIcon className="h-5 w-5" />
                         </button>
                       </td>
                     </tr>
@@ -667,158 +724,6 @@ function CallHistoryContent() {
                   <p className="text-gray-500">Aucun appel trouvé</p>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedCallDetails && (
-        <div className="fixed inset-y-0 right-0 w-[600px] bg-white shadow-xl transform transition-transform duration-300 ease-in-out z-50">
-          <div className="h-full flex flex-col">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Détails de l'appel</h2>
-                <p className="text-sm text-gray-500">{selectedCallDetails.id}</p>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedCallDetails(null);
-                }}
-                className="p-2 text-gray-400 hover:text-gray-500"
-              >
-                <XMarkIcon className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {/* Call Info */}
-              <div className="space-y-6">
-                {/* Basic Info */}
-                <div>
-                  <h3 className="text-sm font-medium text-gray-900">Informations</h3>
-                  <dl className="mt-3 space-y-3">
-                    <div className="grid grid-cols-3 gap-4">
-                      <dt className="text-sm font-medium text-gray-500">Date</dt>
-                      <dd className="text-sm text-gray-900 col-span-2">
-                        {new Date(selectedCallDetails.date).toLocaleDateString()} {selectedCallDetails.hour}
-                      </dd>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <dt className="text-sm font-medium text-gray-500">Durée</dt>
-                      <dd className="text-sm text-gray-900 col-span-2">
-                        {formatDuration(selectedCallDetails.duration)}
-                      </dd>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <dt className="text-sm font-medium text-gray-500">Coût</dt>
-                      <dd className="text-sm text-gray-900 col-span-2">
-                        {calculateCallCost(selectedCallDetails.duration)}€
-                      </dd>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <dt className="text-sm font-medium text-gray-500">Appelant</dt>
-                      <dd className="text-sm text-gray-900 col-span-2">{selectedCallDetails.caller_number}</dd>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <dt className="text-sm font-medium text-gray-500">Destinataire</dt>
-                      <dd className="text-sm text-gray-900 col-span-2">{selectedCallDetails.callee_number}</dd>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <dt className="text-sm font-medium text-gray-500">Statut</dt>
-                      <dd className="text-sm col-span-2">
-                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getStatusStyle(selectedCallDetails.call_status)}`}>
-                          {selectedCallDetails.call_status}
-                        </span>
-                      </dd>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <dt className="text-sm font-medium text-gray-500">Catégorie</dt>
-                      <dd className="text-sm col-span-2">
-                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getCategoryStyle(selectedCallDetails.call_category)}`}>
-                          {selectedCallDetails.call_category}
-                        </span>
-                      </dd>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <dt className="text-sm font-medium text-gray-500">Direction</dt>
-                      <dd className="text-sm col-span-2">
-                        <span className={`inline-flex items-center px-2.5 py-1.5 rounded-md text-xs font-medium ${getDirectionStyle(selectedCallDetails.direction)}`}>
-                          {selectedCallDetails.direction}
-                        </span>
-                      </dd>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <dt className="text-sm font-medium text-gray-500">Nom</dt>
-                      <dd className="text-sm text-gray-900 col-span-2">{selectedCallDetails.user_name || '-'}</dd>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <dt className="text-sm font-medium text-gray-500">Email</dt>
-                      <dd className="text-sm text-gray-900 col-span-2">{selectedCallDetails.user_email || '-'}</dd>
-                    </div>
-                    {selectedCallDetails.campaign_name && (
-                      <div className="grid grid-cols-3 gap-4">
-                        <dt className="text-sm font-medium text-gray-500">Campagne</dt>
-                        <dd className="text-sm text-gray-900 col-span-2">{selectedCallDetails.campaign_name}</dd>
-                      </div>
-                    )}
-                  </dl>
-                </div>
-
-                {/* Recording */}
-                {selectedCallDetails.recording_url && (
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-900 mb-3">Enregistrement</h3>
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <audio 
-                        src={selectedCallDetails.recording_url} 
-                        controls 
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Transcript */}
-                {(selectedCallDetails.ai_transcript || selectedCallDetails.ai_summary) && (
-                  <div>
-                    {selectedCallDetails.ai_summary && (
-                      <div className="mb-6">
-                        <h3 className="text-sm font-medium text-gray-900 mb-3">Résumé</h3>
-                        <div className="bg-gray-50 rounded-lg p-4">
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                            {selectedCallDetails.ai_summary}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    {selectedCallDetails.ai_transcript && (
-                      <div>
-                        <h3 className="text-sm font-medium text-gray-900 mb-3">Transcription</h3>
-                        <div className="bg-gray-50 rounded-lg p-4">
-                          {selectedCallDetails.ai_transcript.split('\n').map((line, index) => {
-                            const isAssistant = line.startsWith('Assistant:');
-                            const isUser = line.startsWith('User:');
-                            return (
-                              <p 
-                                key={index} 
-                                className={`text-sm text-gray-700 whitespace-pre-wrap py-1 px-2 rounded my-1 ${
-                                  isAssistant ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20' : 
-                                  isUser ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20' : ''
-                                }`}
-                              >
-                                {line}
-                              </p>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -888,32 +793,39 @@ function CallHistoryContent() {
         </div>
       )}
       
-      <ConfirmDialog
-        isOpen={showDeleteDialog}
-        onClose={() => {
-          setShowDeleteDialog(false);
-          setSelectedCallIds([]);
-        }}
-        onConfirm={() => handleDeleteCalls(selectedCallIds)}
-        title={`Supprimer ${selectedCallIds.length > 1 ? 'les appels' : 'l\'appel'}`}
-        message={`Êtes-vous sûr de vouloir supprimer ${selectedCallIds.length > 1 ? 'ces appels' : 'cet appel'} ?`}
-        confirmLabel="Supprimer"
-        isLoading={isDeletingCalls}
-        isDanger
+      <TranscriptModal
+        isOpen={isTranscriptOpen}
+        onClose={() => setIsTranscriptOpen(false)}
+        transcript={selectedTranscript.transcript}
+        summary={selectedTranscript.summary}
       />
+      
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
 
+      {/* Expanded Text Popup */}
       {expandedText && (
-        <div
-          className={`fixed z-50 p-2 rounded-md shadow-lg expanded-text-popup text-xs ${
-            expandedText.colorClass || 'bg-white text-gray-900'
-          }`}
-          style={{
-            top: `${expandedText.position.y + 10}px`,
-            left: `${expandedText.position.x}px`,
-            maxWidth: '280px'
+        <div 
+          className={`expanded-text-popup fixed z-50 rounded-lg shadow-lg border border-gray-200 p-3 max-w-xs ${expandedText.colorClass || 'bg-white'} sm:max-w-xs max-w-[calc(100vw-40px)]`}
+          style={{ 
+            left: `${expandedText.position.x}px`, 
+            top: `${expandedText.position.y + 10}px` 
           }}
         >
-          {expandedText.text}
+          <div className="flex justify-between items-start">
+            <p className="text-sm break-words pr-6">{expandedText.text}</p>
+            <button 
+              onClick={() => setExpandedText(null)}
+              className="absolute top-2 right-2 text-current opacity-70 hover:opacity-100 p-1"
+            >
+              <XMarkIcon className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
     </div>
