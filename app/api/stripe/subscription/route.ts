@@ -150,11 +150,34 @@ export async function GET() {
   try {
     const session = await auth();
     
-    if (!session?.user?.id) {
+    if (!session?.user?.id || !session?.user?.email) {
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
       );
+    }
+
+    // Get customer to fetch Stripe subscription details
+    const customers = await stripe.customers.list({
+      email: session.user.email,
+      limit: 1,
+    });
+
+    let endDate: string | null = null;
+
+    if (customers.data.length > 0) {
+      const subscriptions = await stripe.subscriptions.list({
+        customer: customers.data[0].id,
+        status: 'active',
+        limit: 1,
+      });
+
+      if (subscriptions.data.length > 0) {
+        const subscription = subscriptions.data[0];
+        if (subscription.cancel_at_period_end) {
+          endDate = new Date(subscription.current_period_end * 1000).toISOString();
+        }
+      }
     }
 
     // Fetch user subscription from backend
@@ -169,13 +192,98 @@ export async function GET() {
       subscription: {
         plan: data.subscription_plan,
         status: data.subscription_status,
-        autoRenew: data.subscription_auto_renew
+        autoRenew: data.subscription_auto_renew,
+        endDate: endDate
       }
     });
   } catch (error) {
     console.error('Failed to fetch subscription:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to fetch subscription' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE() {
+  try {
+    console.log('🟦 Starting subscription cancellation');
+    const session = await auth();
+    
+    if (!session?.user?.email || !session?.user?.id) {
+      console.log('❌ No authenticated user found');
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    // Get customer
+    const customers = await stripe.customers.list({
+      email: session.user.email,
+      limit: 1,
+    });
+
+    if (customers.data.length === 0) {
+      return NextResponse.json(
+        { error: 'No active subscription found' },
+        { status: 404 }
+      );
+    }
+
+    const customerId = customers.data[0].id;
+
+    // Get active subscriptions
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'active',
+      limit: 1,
+    });
+
+    if (subscriptions.data.length === 0) {
+      return NextResponse.json(
+        { error: 'No active subscription found' },
+        { status: 404 }
+      );
+    }
+
+    const subscription = subscriptions.data[0];
+
+    // Cancel the subscription at period end
+    await stripe.subscriptions.update(subscription.id, {
+      cancel_at_period_end: true,
+    });
+
+    // Update user subscription in analytics backend
+    const payload = {
+      subscription_plan: subscription.metadata?.package || 'unknown',
+      subscription_status: 'active', // Keep it active until the end of period
+      subscription_auto_renew: false, // Mark it as non-renewing
+      subscription_started_at: new Date(subscription.start_date * 1000).toISOString(),
+      subscription_renewed_at: new Date(subscription.current_period_start * 1000).toISOString()
+    };
+
+    const response = await fetch(`${ANALYTICS_URL}/api/users/${session.user.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.detail || 'Failed to update user subscription');
+    }
+
+    return NextResponse.json({
+      message: 'Subscription cancelled successfully',
+      willEndAt: new Date(subscription.current_period_end * 1000).toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error cancelling subscription:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to cancel subscription' },
       { status: 500 }
     );
   }

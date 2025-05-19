@@ -9,6 +9,8 @@ import { useSession } from 'next-auth/react';
 import { EmptyState } from './empty-state';
 import { WebRTCClient } from './webrtc-client';
 import { AgentsListSkeleton } from '../skeletons';
+import { toast } from 'sonner';
+import ConfirmDialog from '@/app/components/ConfirmDialog';
 
 // Voice display names mapping
 const voiceDisplayNames: { [key: string]: string } = {
@@ -51,12 +53,14 @@ export function AgentsList() {
   const router = useRouter();
   const [agents, setAgents] = useState<AIAgent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const { data: session, status } = useSession();
   const [isCallLoading, setIsCallLoading] = useState<string | null>(null);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
   const [callStatus, setCallStatus] = useState<string>('');
   const [hasMessages, setHasMessages] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const fetchAgents = async () => {
@@ -79,24 +83,25 @@ export function AgentsList() {
   }, [session, status]);
 
   const handleDelete = async (agentId: string) => {
-    console.log('Delete button clicked for agent:', agentId);
-    
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cet agent ?')) {
-      console.log('User cancelled deletion');
-      return;
-    }
-    console.log('User confirmed deletion');
+    setSelectedAgentId(agentId);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!selectedAgentId) return;
+    console.log('Delete button clicked for agent:', selectedAgentId);
+    setIsDeleting(true);
 
     try {
       if (!session?.user?.id) {
         throw new Error('User ID not found');
       }
 
-      console.log('Starting agent deletion process for agent:', agentId);
+      console.log('Starting agent deletion process for agent:', selectedAgentId);
 
       // First, get all functions for this agent
-      console.log('Fetching functions for agent:', agentId);
-      const functions = await getAgentFunctions(agentId, session.user.id);
+      console.log('Fetching functions for agent:', selectedAgentId);
+      const functions = await getAgentFunctions(selectedAgentId, session.user.id);
       console.log('Found functions:', functions);
       
       // Delete all functions first
@@ -104,10 +109,10 @@ export function AgentsList() {
         console.log(`Starting deletion of ${functions.length} functions`);
         for (const func of functions) {
           try {
-            console.log('Attempting to delete function:', { functionId: func.id, agentId });
+            console.log('Attempting to delete function:', { functionId: func.id, agentId: selectedAgentId });
             // Convert function ID to number
             const functionId = typeof func.id === 'string' ? parseInt(func.id, 10) : func.id;
-            await removeAgentFunction(agentId, functionId, session.user.id);
+            await removeAgentFunction(selectedAgentId, functionId, session.user.id);
             console.log('Successfully deleted function:', func.id);
           } catch (error) {
             console.error(`Failed to delete function ${func.id}:`, error);
@@ -116,22 +121,20 @@ export function AgentsList() {
         }
         console.log('Completed function deletion process');
       } else {
-        console.log('No functions found for agent:', agentId);
+        console.log('No functions found for agent:', selectedAgentId);
       }
 
       // Then delete the agent
       console.log('Starting agent deletion');
-      const response = await deleteAIAgent(agentId, session.user.id);
+      const response = await deleteAIAgent(selectedAgentId, session.user.id);
       console.log('Agent deletion response:', response);
       
       // Only update UI if deletion was successful
       if (response && response.message === "Agent deleted successfully") {
         console.log('Agent deletion successful, updating UI');
-        setAgents(prev => prev.filter(agent => agent.id !== agentId));
-        setToast({
-          message: 'Agent supprimé avec succès',
-          type: 'success'
-        });
+        setAgents(prev => prev.filter(agent => agent.id !== selectedAgentId));
+        toast.success('Agent supprimé avec succès');
+        setShowDeleteDialog(false);
       } else {
         console.log('Agent deletion failed:', response);
         throw new Error('La suppression a échoué');
@@ -140,18 +143,15 @@ export function AgentsList() {
       console.error('Error in deletion process:', error);
 
       if (error.message.includes('404')) {
-        setToast({
-          message: 'L\'agent n\'existe plus dans la base de données',
-          type: 'error'
-        });
+        toast.error('L\'agent n\'existe plus dans la base de données');
         // Remove from UI if it doesn't exist in database
-        setAgents(prev => prev.filter(agent => agent.id !== agentId));
+        setAgents(prev => prev.filter(agent => agent.id !== selectedAgentId));
       } else {
-        setToast({
-          message: 'Erreur lors de la suppression de l\'agent',
-          type: 'error'
-        });
+        toast.error('Erreur lors de la suppression de l\'agent');
       }
+    } finally {
+      setIsDeleting(false);
+      setSelectedAgentId(null);
     }
   };
 
@@ -180,15 +180,9 @@ export function AgentsList() {
     } catch (error: any) {
       console.error('Error initiating web call:', error);
       if (error.name === 'NotAllowedError') {
-        setToast({
-          message: 'Veuillez autoriser l\'accès au microphone pour passer un appel',
-          type: 'error'
-        });
+        toast.error('Veuillez autoriser l\'accès au microphone pour passer un appel');
       } else {
-        setToast({
-          message: error.message || 'Erreur lors de l\'initiation de l\'appel',
-          type: 'error'
-        });
+        toast.error(error.message || 'Erreur lors de l\'initiation de l\'appel');
       }
       // Reset active call ID if there was an error
       setActiveCallId(null);
@@ -220,10 +214,7 @@ export function AgentsList() {
 
   const handleCallError = (error: Error) => {
     console.error('Call error:', error);
-    setToast({
-      message: error.message || 'Erreur lors de l\'appel',
-      type: 'error'
-    });
+    toast.error(error.message || 'Erreur lors de l\'appel');
     // Only reset states after a short delay to ensure smooth transition
     setTimeout(() => {
       setActiveCallId(null);
@@ -292,17 +283,11 @@ export function AgentsList() {
 
       // Update the UI with the new agent
       setAgents(prev => [...prev, duplicatedAgent]);
-      
-      setToast({
-        message: 'Agent dupliqué avec succès',
-        type: 'success'
-      });
+
+      toast.success('Agent dupliqué avec succès');
     } catch (error: any) {
       console.error('Error duplicating agent:', error);
-      setToast({
-        message: 'Erreur lors de la duplication de l\'agent',
-        type: 'error'
-      });
+      toast.error('Erreur lors de la duplication de l\'agent');
     }
   };
 
@@ -422,13 +407,19 @@ export function AgentsList() {
         />
       )}
 
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false);
+          setSelectedAgentId(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Supprimer l'agent"
+        message="Êtes-vous sûr de vouloir supprimer cet agent ? Cette action est irréversible."
+        confirmLabel="Supprimer"
+        isLoading={isDeleting}
+        isDanger
+      />
     </>
   );
 } 
