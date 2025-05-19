@@ -284,16 +284,10 @@ export function AgentsList() {
       // Update the UI with the new agent
       setAgents(prev => [...prev, duplicatedAgent]);
 
-      setToast({
-        message: 'Agent dupliqué avec succès',
-        type: 'success'
-      });
+      toast.success('Agent dupliqué avec succès');
     } catch (error: any) {
       console.error('Error duplicating agent:', error);
-      setToast({
-        message: 'Erreur lors de la duplication de l\'agent',
-        type: 'error'
-      });
+      toast.error('Erreur lors de la duplication de l\'agent');
     }
   };
 
