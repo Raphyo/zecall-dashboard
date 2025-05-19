@@ -8,6 +8,12 @@ import { useSession } from 'next-auth/react';
 import { ANALYTICS_URL, ORCHESTRATOR_URL } from '@/app/lib/api';
 import { Toast } from '@/app/ui/toast';
 
+// Add list of locked users (copied from nav-links.tsx for consistency)
+const LOCKED_USERS = [
+  'dcambon.spi@gmail.com',
+  'contact@ilcaffeditalia.fr',
+  'julien.volkmann@gmail.com'
+];
 
 export default function PhoneNumbersPage() {
   const [phoneNumbers, setPhoneNumbers] = useState<PhoneNumber[]>([]);
@@ -20,6 +26,10 @@ export default function PhoneNumbersPage() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const { data: session } = useSession();
 
+  const isUserLocked = () => {
+    const userEmail = session?.user?.email;
+    return userEmail && LOCKED_USERS.includes(userEmail);
+  };
 
   const loadPhoneNumbers = async () => {
     try {
@@ -215,7 +225,7 @@ export default function PhoneNumbersPage() {
                   ) : agents.length === 0 ? (
                     <p className="mt-2 text-sm text-gray-500">
                       Aucun agent IA disponible.{' '}
-                      {(
+                      {!isUserLocked() && (
                         <Link href="/dashboard/ai-agents/create" className="text-blue-600 hover:text-blue-800">
                           Créer un agent
                         </Link>
