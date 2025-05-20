@@ -16,4 +16,5 @@ export interface Call {
   direction: string;            // VARCHAR(20) NOT NULL DEFAULT 'inconnu'
   user_email: string;           // VARCHAR(255)
   campaign_name?: string;       // From campaigns table join
+  session_id: string;
 }

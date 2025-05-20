@@ -763,6 +763,10 @@ function CallHistoryContent() {
                         <dd className="text-sm text-gray-900 col-span-2">{selectedCallDetails.campaign_name}</dd>
                       </div>
                     )}
+                    <div className="grid grid-cols-3 gap-4">
+                      <dt className="text-sm font-medium text-gray-500">Session ID</dt>
+                      <dd className="text-sm text-gray-900 col-span-2">{selectedCallDetails.session_id || '-'}</dd>
+                    </div>
                   </dl>
                 </div>
 
