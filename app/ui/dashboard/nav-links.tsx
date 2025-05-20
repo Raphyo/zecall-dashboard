@@ -8,30 +8,12 @@ import {
   ComputerDesktopIcon,
   PhoneIcon,
   ClockIcon,
-  LockClosedIcon,
+  EnvelopeIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 
-// Add list of users with locked features
-const LOCKED_USERS = [
-  // 'raphaelvannerom@gmail.com',
-  // 'rvannerom@zecall.ai',
-  // 'team.zecall@gmail.com',
-  // 'sachalellouche@gmail.com',
-  // 'slellouche@zecall.ai',
-  'mohamed93420@hotmail.com',
-  'dcambon.spi@gmail.com',
-  'contact@ilcaffeditalia.fr',
-//   'david.diouf@hotmail.fr',
-  // 'actionenergetique@gmail.com',
-  'julien.volkmann@gmail.com'
-  // Add more emails as needed
-];
-
-// Add list of features that can be locked
-const LOCKED_FEATURES = ['campaigns', 'ai-agents'];
 
 interface NavLinksProps {
   isCollapsed?: boolean;
@@ -41,17 +23,6 @@ export default function NavLinks({ isCollapsed = false }: NavLinksProps) {
   const pathname = usePathname();
   const [showTooltip, setShowTooltip] = useState<string | null>(null);
   const { data: session } = useSession();
-
-  const isFeatureLocked = (feature: string) => {
-    const userEmail = session?.user?.email;
-    return userEmail && LOCKED_USERS.includes(userEmail) && LOCKED_FEATURES.includes(feature);
-  };
-
-  const handleLockedClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setShowTooltip('locked');
-    setTimeout(() => setShowTooltip(null), 3000);
-  };
 
   const links = [
     { 
@@ -65,8 +36,6 @@ export default function NavLinks({ isCollapsed = false }: NavLinksProps) {
       name: 'Agents IA', 
       href: '/dashboard/ai-agents', 
       icon: ComputerDesktopIcon,
-      locked: isFeatureLocked('ai-agents'),
-      onClick: handleLockedClick,
       bgClass: 'bg-purple-400/10 text-purple-600',
       activeClass: 'bg-purple-50 text-purple-600 border-purple-600'
     },
@@ -81,8 +50,6 @@ export default function NavLinks({ isCollapsed = false }: NavLinksProps) {
       name: 'Mes Campagnes', 
       href: '/dashboard/campaigns', 
       icon: RocketLaunchIcon,
-      locked: isFeatureLocked('campaigns'),
-      onClick: handleLockedClick,
       bgClass: 'bg-amber-400/10 text-amber-600',
       activeClass: 'bg-amber-50 text-amber-600 border-amber-600'
     },
@@ -100,42 +67,6 @@ export default function NavLinks({ isCollapsed = false }: NavLinksProps) {
       {links.map((link) => {
         const LinkIcon = link.icon;
         const isActive = pathname === link.href;
-        
-        if (link.locked) {
-          return (
-            <div className="relative group" key={link.name}>
-              <button
-                onClick={link.onClick}
-                className={clsx(
-                  'group relative flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all duration-200',
-                  'text-gray-400 cursor-not-allowed',
-                  isCollapsed ? 'justify-center' : 'justify-start',
-                  'w-14 md:w-auto'
-                )}
-                onMouseEnter={() => setShowTooltip(link.name)}
-                onMouseLeave={() => setShowTooltip(null)}
-              >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-                  <LinkIcon className="h-5 w-5" />
-                </div>
-                {!isCollapsed && <span className="truncate">{link.name}</span>}
-                {!isCollapsed && <LockClosedIcon className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4" />}
-              </button>
-              
-              {/* Tooltip for collapsed state */}
-              {isCollapsed && (
-                <div className={clsx(
-                  'absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-sm rounded whitespace-nowrap z-50',
-                  'transition-opacity duration-200',
-                  showTooltip === link.name ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                )}>
-                  {link.name}
-                  <div className="absolute left-0 top-1/2 -translate-x-1 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
-                </div>
-              )}
-            </div>
-          );
-        }
         
         return (
           <div className="relative group" key={link.name}>
