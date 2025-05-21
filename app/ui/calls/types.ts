@@ -17,4 +17,5 @@ export interface Call {
   user_email: string;           // VARCHAR(255)
   campaign_name?: string;       // From campaigns table join
   session_id: string;
+  sms_status_callback?: string;
 }
