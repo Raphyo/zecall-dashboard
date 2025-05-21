@@ -349,6 +349,7 @@ function CallHistoryContent() {
       setIsDeletingCalls(false);
       setShowDeleteDialog(false);
       setSelectedCallIds([]);
+      setSelectedCalls([]);
     }
   };
 
@@ -554,6 +555,7 @@ function CallHistoryContent() {
                           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-600"
                           checked={selectedCalls.includes(call.id)}
                           onChange={(e) => handleSelectCall(call.id, e.target.checked)}
+                          onClick={e => e.stopPropagation()}
                         />
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
