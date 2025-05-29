@@ -60,6 +60,13 @@ export default function NavLinks({ isCollapsed = false }: NavLinksProps) {
       bgClass: 'bg-rose-400/10 text-rose-600',
       activeClass: 'bg-rose-50 text-rose-600 border-rose-600'
     },
+    { 
+      name: 'Mes Emails', 
+      href: '/dashboard/emails', 
+      icon: EnvelopeIcon,
+      bgClass: 'bg-indigo-400/10 text-indigo-600',
+      activeClass: 'bg-indigo-50 text-indigo-600 border-indigo-600'
+    },
   ];
 
   return (
