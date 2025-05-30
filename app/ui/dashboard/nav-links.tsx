@@ -123,7 +123,9 @@ export default function NavLinks({ isCollapsed = false }: NavLinksProps) {
         const LinkIcon = link.icon;
         const isActive = link.isParent 
           ? link.subItems?.some(item => pathname === item.href || pathname.startsWith(item.href + '/'))
-          : pathname === link.href || pathname.startsWith(link.href + '/');
+          : link.href === '/dashboard' 
+            ? pathname === '/dashboard' // Exact match for dashboard home
+            : pathname === link.href || pathname.startsWith(link.href + '/');
         const hasSubItems = link.subItems && link.subItems.length > 0;
         const isExpanded = expandedMenus.includes(link.name);
         
@@ -152,6 +154,11 @@ export default function NavLinks({ isCollapsed = false }: NavLinksProps) {
                     <LinkIcon className="h-5 w-5" />
                   </div>
                   {!isCollapsed && <span className="truncate">{link.name}</span>}
+                  
+                  {/* Active indicator for parent items */}
+                  {isActive && !isCollapsed && (
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-current" />
+                  )}
                   
                   {/* Hover effect */}
                   <div className={clsx(
@@ -190,8 +197,8 @@ export default function NavLinks({ isCollapsed = false }: NavLinksProps) {
                   </div>
                   {!isCollapsed && <span className="truncate">{link.name}</span>}
                   
-                  {/* Active indicator */}
-                  {isActive && !isCollapsed && (
+                  {/* Active indicator for parent items */}
+                  {isActive && !isCollapsed && link.isParent && (
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-current" />
                   )}
                   

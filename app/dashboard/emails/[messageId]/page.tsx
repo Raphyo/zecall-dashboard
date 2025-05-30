@@ -6,10 +6,18 @@ export const metadata: Metadata = {
   description: 'View and interact with email content',
 };
 
-export default function EmailViewPage({ params }: { params: { messageId: string } }) {
+interface Props {
+  params: Promise<{
+    messageId: string;
+  }>;
+}
+
+export default async function EmailViewPage({ params }: Props) {
+  const { messageId } = await params;
+  
   return (
     <div className="p-6">
-      <EmailView messageId={params.messageId} />
+      <EmailView messageId={messageId} />
     </div>
   );
 } 

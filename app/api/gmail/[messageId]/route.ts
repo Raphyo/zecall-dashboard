@@ -4,6 +4,12 @@ import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { sql } from '@vercel/postgres';
 
+interface RequestParams {
+  params: {
+    messageId: string;
+  }
+}
+
 // Create a new OAuth2 client
 const oauth2Client = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID,
@@ -113,8 +119,7 @@ function parseEmailParts(payload: any) {
 
 // Get a single email by ID
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { messageId: string } }
+  request: NextRequest
 ) {
   try {
     const session = await auth();
@@ -135,7 +140,11 @@ export async function GET(
       );
     }
 
-    const messageId = params.messageId;
+    // Extract messageId from URL
+    const url = new URL(request.url);
+    const pathParts = url.pathname.split('/');
+    const messageId = pathParts[pathParts.length - 1];
+
     if (!messageId) {
       return NextResponse.json(
         { error: 'Message ID is required' },
@@ -166,7 +175,7 @@ export async function GET(
 
     // Get thread ID to get all messages in the conversation
     const threadId = messageData.data.threadId;
-    let threadMessages = [];
+    let threadMessages: any[] = [];
     
     if (threadId) {
       const threadData = await gmail.users.threads.get({
@@ -225,7 +234,13 @@ export async function GET(
     });
 
     // Extract attachments if any
-    const attachments = [];
+    const attachments: Array<{
+      id: string | undefined;
+      filename: string;
+      mimeType: string;
+      size: number;
+    }> = [];
+    
     if (messageData.data.payload?.parts) {
       messageData.data.payload.parts.forEach((part: any) => {
         if (part.filename && part.filename.length > 0) {
