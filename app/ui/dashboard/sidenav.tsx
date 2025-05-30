@@ -6,7 +6,7 @@ import AcmeLogo from '@/app/ui/acme-logo';
 import { useSession } from 'next-auth/react';
 import ProfileMenu from '@/app/components/ProfileMenu';
 import { useState, useEffect } from 'react';
-import { CurrencyEuroIcon, ClockIcon, ChevronLeftIcon, ChevronRightIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
+import { CurrencyEuroIcon, ClockIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import SubscriptionPackagesModal from '@/app/components/SubscriptionPackagesModal';
 import clsx from 'clsx';
 
@@ -15,7 +15,6 @@ export default function SideNav() {
   const [credits, setCredits] = useState({ balance: 0, minutes: 0 });
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [unreadEmails, setUnreadEmails] = useState(0);
 
   // Add polling interval for credit updates
   useEffect(() => {
@@ -36,29 +35,6 @@ export default function SideNav() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
-
-  // Fetch unread emails count
-  useEffect(() => {
-    fetchUnreadEmails();
-    const emailIntervalId = setInterval(fetchUnreadEmails, 60000); // Check every minute
-    return () => clearInterval(emailIntervalId);
-  }, []);
-
-  const fetchUnreadEmails = async () => {
-    try {
-      const response = await fetch('/api/gmail');
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch emails');
-      }
-
-      const unreadCount = data.emails.filter((email: any) => email.unread).length;
-      setUnreadEmails(unreadCount);
-    } catch (error) {
-      console.error('Error fetching unread emails:', error);
-    }
-  };
 
   const fetchCredits = async () => {
     try {
@@ -113,18 +89,6 @@ export default function SideNav() {
         <div className="space-y-1 py-4">
           <NavLinks isCollapsed={isCollapsed} />
         </div>
-
-        {/* Email Notifications Section */}
-        {!isCollapsed && unreadEmails > 0 && (
-          <div className="px-2">
-            <Link href="/dashboard/emails" className="flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-3 text-sm text-indigo-600 transition-colors hover:bg-indigo-100">
-              <div className="flex items-center gap-2">
-                <EnvelopeIcon className="h-5 w-5" />
-                <span>{unreadEmails} {unreadEmails === 1 ? 'email non lu' : 'emails non lus'}</span>
-              </div>
-            </Link>
-          </div>
-        )}
 
         {/* Credits and Profile Section */}
         <div className={clsx(
