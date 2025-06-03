@@ -26,6 +26,7 @@ interface BaseConfig {
   active: boolean;
 }
 
+
 interface ParsedParameters {
   transferTo?: string;
   [key: string]: any;
