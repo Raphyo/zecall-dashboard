@@ -3,7 +3,8 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
-    "start": "next start"
+    "start": "next start",
+    "setup-gmail": "node scripts/create-gmail-tokens-table.js"
   },
   "dependencies": {
     "@auth/core": "^0.37.4",
@@ -21,8 +22,12 @@
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.5.0",
+    "google-auth-library": "^9.15.1",
+    "googleapis": "^149.0.0",
     "next": "^15.2.4",
     "next-auth": "^5.0.0-beta.25",
+    "openai": "^4.103.0",
     "postcss": "8.4.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
