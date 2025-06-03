@@ -4,11 +4,17 @@ import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { sql } from '@vercel/postgres';
 
+// Ensure environment variables are loaded correctly
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const NEXTAUTH_URL = process.env.NEXTAUTH_URL || 'http://localhost:3000';
+
 // Create a new OAuth2 client
+const redirectUri = `${NEXTAUTH_URL}/api/gmail/auth/callback`;
 const oauth2Client = new OAuth2Client(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.NEXTAUTH_URL + '/api/auth/callback/google'
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  redirectUri
 );
 
 // Helper function to safely parse and format dates
@@ -142,14 +148,49 @@ export async function GET(request: NextRequest) {
 // Helper function to get Google tokens for user
 async function getGoogleTokensForUser(email: string) {
   try {
-    // Retrieve tokens from the database
-    const tokensResult = await sql`
-      SELECT access_token, refresh_token, expiry_date
-      FROM gmail_tokens
-      WHERE user_email = ${email}
-      ORDER BY updated_at DESC
-      LIMIT 1
-    `;
+    console.log('Fetching Gmail tokens for user:', email);
+    
+    // Get user ID from session if available
+    const session = await auth();
+    const userId = session?.user?.id;
+    
+    console.log('Current user session info:', { 
+      email: session?.user?.email, 
+      id: userId,
+      sessionEmail: email
+    });
+    
+    // Query with user ID if available, otherwise fall back to just email
+    let tokensResult;
+    if (userId) {
+      tokensResult = await sql`
+        SELECT access_token, refresh_token, expiry_date
+        FROM gmail_tokens
+        WHERE user_email = ${email} AND user_id = ${userId}
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `;
+      
+      // If no results with user ID, try without user ID as fallback
+      if (!tokensResult.rowCount || tokensResult.rowCount === 0) {
+        tokensResult = await sql`
+          SELECT access_token, refresh_token, expiry_date
+          FROM gmail_tokens
+          WHERE user_email = ${email}
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `;
+      }
+    } else {
+      // No user ID available, just use email
+      tokensResult = await sql`
+        SELECT access_token, refresh_token, expiry_date
+        FROM gmail_tokens
+        WHERE user_email = ${email}
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `;
+    }
 
     if (!tokensResult.rowCount || tokensResult.rowCount === 0) {
       console.log('No Gmail tokens found for user:', email);
