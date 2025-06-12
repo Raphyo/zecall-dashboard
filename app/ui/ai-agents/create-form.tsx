@@ -8,12 +8,10 @@ import { Toast } from '../toast';
 import { useSession } from 'next-auth/react';
 import { builtInVariables, Variable } from '@/app/lib/constants';
 
-// Import audio files
 const metroAudio = '/api/audio?file=backgrounds%2FAlmost-Empty-Metro-Station-in-Paris.mp3';
 const office1Audio = '/api/audio?file=backgrounds%2FOffice-Ambience.mp3';
 const office2Audio = '/api/audio?file=backgrounds%2FOffice-Ambience-2.mp3';
 
-// Voice samples
 const voiceSamples = [
   { id: 'guillaume-11labs', name: 'Guillaume (H)', gender: 'male', url: '/api/audio?file=voices%2FGuillaume-11labs.mp3' },
   { id: 'lucien-11labs', name: 'Lucien (H)', gender: 'male', url: '/api/audio?file=voices%2FLucien-11labs.mp3' },
@@ -27,6 +25,7 @@ interface BaseConfig {
   description?: string;
   active: boolean;
 }
+
 
 interface ParsedParameters {
   transferTo?: string;
@@ -108,6 +107,7 @@ interface AIAgent {
   background_audio: string;
   language: string;
   llm_prompt: string;
+  summary_prompt?: string; // Added summary prompt field
   allow_interruptions: boolean;
   ai_starts_conversation: boolean;
   silence_detection: boolean;
@@ -140,6 +140,7 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     knowledgeBase: null as File | null,
     knowledgeBaseType: 'pdf',
     llmPrompt: initialData?.llm_prompt || '',
+    summaryPrompt: initialData?.summary_prompt || '', // Added summary prompt
     allowInterruptions: initialData?.allow_interruptions || false,
     aiStartsConversation: initialData?.ai_starts_conversation || false,
     silenceDetection: initialData?.silence_detection || false,
@@ -278,11 +279,13 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
     setIsSubmitting(true);
     try {
       console.log('Debug - Initial vad_stop_secs value:', agent.vadStopSecs);
+      console.log('Debug - Summary prompt value:', agent.summaryPrompt);
       const formData = new FormData();
       formData.append('name', agent.name);
       formData.append('voice_name', agent.voiceName);
       formData.append('language', agent.language);
       formData.append('llm_prompt', agent.llmPrompt);
+      formData.append('summary_prompt', agent.summaryPrompt);
       formData.append('background_audio', agent.backgroundAudio);
       formData.append('allow_interruptions', agent.allowInterruptions.toString());
       formData.append('ai_starts_conversation', agent.aiStartsConversation.toString());
@@ -318,6 +321,8 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
 
       let savedAgent: AIAgent;
       if (agentId) {
+        console.log('Updating agent with ID:', agentId);
+        console.log('Summary prompt being sent to backend:', agent.summaryPrompt);
         savedAgent = await updateAIAgent(agentId, formData);
         setToast({
           message: 'Agent mis à jour avec succès',
@@ -1192,6 +1197,70 @@ export function CreateAIAgentForm({ agentId, initialData }: { agentId?: string; 
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* Summary Prompt Section */}
+          <div className="p-6 border-t border-gray-100">
+            <div className="flex items-center mb-6">
+              <CommandLineIcon className="h-6 w-6 text-gray-600 mr-2" />
+              <h2 className="text-lg font-medium">Prompt de Résumé</h2>
+            </div>
+            <div>
+              <p className="mt-1 text-sm text-gray-500 mb-4">
+                Ce prompt sera utilisé pour générer un résumé de la conversation après l'appel.
+                Laissez vide pour utiliser le prompt par défaut.
+              </p>
+              <div className="relative">
+                <textarea
+                  id="summaryPrompt"
+                  name="summaryPrompt"
+                  rows={4}
+                  value={agent.summaryPrompt}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setAgent(prev => ({ ...prev, summaryPrompt: newValue }));
+                  }}
+                  className="mt-2 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                  placeholder="Tu es un assistant qui génère des résumés de conversations. Résume les points importants de cette conversation..."
+                />
+              </div>
+              {/* Quick access to variables */}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {agent.variables.map((variable, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => {
+                      const textarea = document.getElementById('summaryPrompt') as HTMLTextAreaElement;
+                      if (textarea) {
+                        const cursorPos = textarea.selectionStart;
+                        const textBefore = textarea.value.substring(0, cursorPos);
+                        const textAfter = textarea.value.substring(cursorPos);
+                        const newValue = textBefore + '{' + variable.name + '}' + textAfter;
+                        setAgent(prev => ({ ...prev, summaryPrompt: newValue }));
+                        // Set cursor position after the inserted variable
+                        setTimeout(() => {
+                          textarea.focus();
+                          const newCursorPos = cursorPos + variable.name.length + 2;
+                          textarea.setSelectionRange(newCursorPos, newCursorPos);
+                        }, 0);
+                      }
+                    }}
+                    className={`px-2 py-1 text-sm rounded-full flex items-center gap-1 ${
+                      variable.isBuiltIn 
+                        ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        : 'bg-green-100 text-green-700 hover:bg-green-200'
+                    }`}
+                  >
+                    <span>{variable.name}</span>
+                    <span className={`text-xs ${variable.isBuiltIn ? 'text-blue-500' : 'text-green-500'}`}>({variable.type})</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Conseil: Incluez des instructions spécifiques sur le format et le contenu du résumé souhaité.
+              </p>
             </div>
           </div>
 
