@@ -5,7 +5,7 @@ import { ORCHESTRATOR_URL } from '@/app/lib/api';
 
 interface Message {
   text: string;
-  sender: 'user' | 'bot';
+  sender: 'user' | 'bot' | 'function';
   timestamp: Date;
 }
 
@@ -120,11 +120,21 @@ export function WebRTCClient({ agentId, onStatusChange, onError, onDisconnect }:
             },
             onBotTranscript: (data) => {
               console.log('Bot:', data.text);
-              setMessages(prev => [...prev, {
-                text: data.text,
-                sender: 'bot',
-                timestamp: new Date()
-              }]);
+              
+              // Check if the transcript starts with "Fonction:" to identify function calls
+              if (data.text.startsWith('Fonction:') || data.text.startsWith('Function response')) {
+                setMessages(prev => [...prev, {
+                  text: data.text,
+                  sender: 'function',
+                  timestamp: new Date()
+                }]);
+              } else {
+                setMessages(prev => [...prev, {
+                  text: data.text,
+                  sender: 'bot',
+                  timestamp: new Date()
+                }]);
+              }
             },
             onError: (error) => {
               console.error('RTVI error:', error);
@@ -209,6 +219,8 @@ export function WebRTCClient({ agentId, onStatusChange, onError, onDisconnect }:
                 className={`rounded-lg px-4 py-2 max-w-[80%] ${
                   message.sender === 'user'
                     ? 'bg-blue-500 text-white'
+                    : message.sender === 'function'
+                    ? 'bg-purple-100 text-gray-900'
                     : 'bg-gray-100 text-gray-900'
                 }`}
               >

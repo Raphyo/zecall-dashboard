@@ -810,12 +810,14 @@ function CallHistoryContent() {
                           {selectedCallDetails.ai_transcript.split('\n').map((line, index) => {
                             const isAssistant = line.startsWith('Assistant:');
                             const isUser = line.startsWith('User:');
+                            const isFunction = line.startsWith('Fonction:') || line.startsWith('Function response');
                             return (
                               <p 
                                 key={index} 
                                 className={`text-sm text-gray-700 whitespace-pre-wrap py-1 px-2 rounded my-1 ${
                                   isAssistant ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20' : 
-                                  isUser ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20' : ''
+                                  isUser ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20' : 
+                                  isFunction ? 'bg-purple-50 text-purple-700 ring-1 ring-purple-600/20' : ''
                                 }`}
                               >
                                 {line}
